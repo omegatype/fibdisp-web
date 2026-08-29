@@ -58,25 +58,11 @@ input[readonly] { background: #eeeeee; color: #333; }
   height: 34vh;
   position: relative;
   overflow: hidden;
-  background: #e8e8e8;
+  background: transparent;
   border: 0;
-  border-radius: 3px;
-  padding: 4px;
+  border-radius: 0;
+  padding: 0;
   box-shadow: none;
-}
-/* A non-directional engraved frame drawn ABOVE Plotly, so all four sides stay visible. */
-.plot-panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1px solid #858585;
-  border-radius: 3px;
-  box-shadow:
-    inset 0 0 0 1px #f8f8f8,
-    inset 0 0 0 2px #b6b6b6,
-    0 0 0 1px #d0d0d0;
-  pointer-events: none;
-  z-index: 10000;
 }
 .plot-grid.six .plot-panel { min-height: 265px; height: 32vh; }
 .phase-grid .plot-panel, .compressor-grid .plot-panel { min-height: 430px; height: 62vh; }
@@ -194,11 +180,11 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 .js-plotly-plot .modebar { background: rgba(255,255,255,0.78) !important; border: 1px solid rgba(100,100,100,0.18); border-radius: 3px; }
 
 
-/* Plot panels use a symmetric recessed frame on all four sides. */
+/* The outer plot container is deliberately invisible; only the axes frame is shown. */
 .plot-panel > .js-plotly-plot,
 .plot-panel > .plot-container,
 .plot-panel .plot-container {
-  border-radius: 1px;
+  border-radius: 0;
 }
 
 @media (max-width: 430px) {
