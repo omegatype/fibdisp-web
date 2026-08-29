@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="FibDisp theory, numerical model, scope and model limitations." />
+  <title>FibDisp — About & Model</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</head>
+<body class="doc-body">
+  <div class="doc-shell">
+    <header class="doc-header">
+      <h1 class="doc-title">FibDisp</h1>
+      <div class="doc-subtitle">Simulation of ultrashort-pulse propagation in gas-filled hollow-core fibers</div>
+      <div class="doc-subtitle"><strong>Author:</strong> Davide Faccialà</div>
+      <nav class="doc-nav">
+        <a class="header-link" href="./index.html">← Back to FibDisp</a>
+        <a class="header-link" href="./README_FibDisp_EN_v5.pdf" target="_blank" rel="noopener">Full manual PDF</a>
+      </nav>
+    </header>
+
+    <main class="doc-main">
+      <section>
+        <h2>Purpose and scope</h2>
+        <p>FibDisp simulates the propagation of an ultrashort laser pulse in a single-mode gas-filled hollow-core fiber or capillary. Propagation is calculated with a symmetric split-step Fourier method applied to a generalized nonlinear Schrödinger equation containing second- and third-order dispersion, linear attenuation, Kerr self-phase modulation, self-steepening, and input quadratic and cubic spectral phase.</p>
+        <p>The program provides Gaussian, hyperbolic-secant and super-Gaussian input pulses; calculated gas/waveguide coefficients and a Manual mode; selectable propagation terms; two self-steepening solvers; temporal and spectral evolution maps; post-fiber GDD display; spectral-phase fitting; GDD-compressor analysis; and one-parameter sweeps.</p>
+        <div class="scope-box">The web application performs the numerical calculation locally in the browser. The numerical model itself is the same FibDisp physics core used by the desktop application.</div>
+      </section>
+
+      <section>
+        <h2>Coordinates and principal quantities</h2>
+        <table>
+          <thead><tr><th>Symbol</th><th>Definition</th></tr></thead>
+          <tbody>
+            <tr><td>\(z\)</td><td>Propagation coordinate along the fiber; \(L\) is the total fiber length.</td></tr>
+            <tr><td>\(t\)</td><td>Laboratory time.</td></tr>
+            <tr><td>\(T\)</td><td>Retarded time, \(T=t-\beta_1z\).</td></tr>
+            <tr><td>\(U(z,T)\)</td><td>Dimensionless complex pulse envelope used by the numerical model.</td></tr>
+            <tr><td>\(A(z,T)\)</td><td>Power-normalized envelope, \(A=\sqrt{P_0}U\), in \(\sqrt{\mathrm W}\).</td></tr>
+            <tr><td>\(P(z,T)\)</td><td>Instantaneous pulse power, \(P=P_0|U|^2\), in W.</td></tr>
+            <tr><td>\(E_p\)</td><td>Pulse energy, \(E_p=\int P(T)\,dT\).</td></tr>
+            <tr><td>\(\lambda_0\)</td><td>Carrier wavelength; \(\nu_0=c/\lambda_0\), \(\omega_0=2\pi\nu_0\).</td></tr>
+            <tr><td>\(f_{\rm FFT}\)</td><td>Centred numerical FFT frequency coordinate.</td></tr>
+            <tr><td>\(\nu\)</td><td>Physical optical frequency, \(\nu=\nu_0-f_{\rm FFT}\).</td></tr>
+            <tr><td>\(\Omega\)</td><td>Physical angular-frequency detuning, \(\Omega=\omega-\omega_0=-2\pi f_{\rm FFT}\).</td></tr>
+            <tr><td>\(\beta_2,\beta_3\)</td><td>Second- and third-order derivatives of the modal propagation constant with respect to angular frequency at \(\omega_0\).</td></tr>
+            <tr><td>\(\alpha\)</td><td>Power attenuation coefficient in m\(^{-1}\).</td></tr>
+            <tr><td>\(\gamma\)</td><td>Kerr nonlinear coefficient in W\(^{-1}\)m\(^{-1}\).</td></tr>
+            <tr><td>\(R\)</td><td>Capillary radius; \(A_{\rm eff}\) is the effective modal area.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Fourier and sign convention</h2>
+        <div class="equation">\[
+        \widetilde U(f_{\rm FFT})=\int_{-\infty}^{+\infty}U(T)e^{-i2\pi f_{\rm FFT}T}\,dT,
+        \qquad
+        \frac{\partial}{\partial T}\longleftrightarrow i2\pi f_{\rm FFT}.
+        \]</div>
+        <div class="equation">\[
+        \boxed{\Omega=-2\pi f_{\rm FFT}},\qquad
+        \boxed{\nu=\nu_0-f_{\rm FFT}},\qquad
+        \lambda=\frac{c}{\nu}.
+        \]</div>
+      </section>
+
+      <section>
+        <h2>Propagation model</h2>
+        <h3>Linear spectral operator</h3>
+        <p>In retarded time \(T=t-\beta_1z\), the linear spectral contribution is</p>
+        <div class="equation">\[
+        \left.\frac{\partial\widetilde U}{\partial z}\right|_{\rm L}=D(\Omega)\widetilde U,
+        \qquad
+        D(\Omega)=-\frac{\alpha(\omega_0+\Omega)}{2}
+        +i\frac{\beta_2}{2}\Omega^2+i\frac{\beta_3}{6}\Omega^3.
+        \]</div>
+        <p>For Manual mode, \(\alpha\) is constant. For a built-in gas, the frequency-dependent capillary-loss function is used.</p>
+
+        <h3>Nonlinear envelope equation</h3>
+        <div class="equation">\[
+        A(z,T)=\sqrt{P_0}\,U(z,T),\qquad P(z,T)=P_0|U(z,T)|^2,
+        \]</div>
+        <div class="equation">\[
+        \boxed{
+        \left.\frac{\partial U}{\partial z}\right|_{\rm NL}
+        =i\gamma P_0|U|^2U
+        -\frac{\gamma P_0}{\omega_0}\frac{\partial}{\partial T}\left(|U|^2U\right)
+        }.
+        \]</div>
+        <p>The first nonlinear term is self-phase modulation. The derivative term is self-steepening (optical-shock correction).</p>
+
+        <h3>Combined implemented equation</h3>
+        <div class="equation">\[
+        \boxed{
+        \frac{\partial U}{\partial z}
+        =\mathcal F^{-1}\!\left\{D(\Omega)\widetilde U\right\}
+        +i\gamma P_0|U|^2U
+        -\frac{\gamma P_0}{\omega_0}\frac{\partial}{\partial T}\left(|U|^2U\right)
+        }.
+        \]</div>
+      </section>
+
+      <section>
+        <h2>Gas and capillary model</h2>
+        <p>For the built-in gases, FibDisp evaluates the gas refractive index with pressure scaling and combines it with the large-core capillary approximation. The resulting modal index is differentiated numerically around the carrier to obtain the displayed \(\beta_2\) and \(\beta_3\). The nonlinear coefficient is</p>
+        <div class="equation">\[
+        \gamma=\frac{n_2\omega_0}{cA_{\rm eff}}.
+        \]</div>
+        <p>Manual mode allows direct specification of \(\beta_2\), \(\beta_3\), \(\alpha\), and \(\gamma\).</p>
+      </section>
+
+      <section>
+        <h2>Numerical propagation</h2>
+        <p>The full propagation uses a symmetric split-step Fourier method. Each global propagation step applies a half linear step in the spectral domain, a nonlinear step in retarded time, and a second half linear step.</p>
+        <p>For self-steepening, two nonlinear solvers are available:</p>
+        <ul>
+          <li><strong>Fast exponential:</strong> a fast frozen nonlinear-step approximation.</li>
+          <li><strong>Accurate RK4 (adaptive):</strong> integrates the nonlinear equation directly with RK4 and automatically subdivides the nonlinear step when required by nonlinear phase or self-steepening strength.</li>
+        </ul>
+        <p>Boundary warnings indicate when appreciable field amplitude reaches the temporal or spectral edge of the computational window.</p>
+      </section>
+
+      <section>
+        <h2>Phase and compressor conventions</h2>
+        <div class="equation">\[
+        \phi_{\rm GDD}(\Omega)=\frac{\mathrm{GDD}}{2}\Omega^2,
+        \qquad
+        \phi_{\rm TOD}(\Omega)=\frac{\mathrm{TOD}}{6}\Omega^3.
+        \]</div>
+        <p>The displayed temporal instantaneous-frequency shift is</p>
+        <div class="equation">\[
+        \Delta\nu(T)=-\frac{1}{2\pi}\frac{d\phi_T}{dT},
+        \]</div>
+        <p>and the spectral group delay is \(GD=d\phi/d\omega\). A predominantly positive output quadratic spectral phase is compensated by a negative applied GDD, and vice versa.</p>
+        <p>Phase Analysis performs a spectral-power-weighted polynomial fit over the selected physical spectral interval. GDD Compressor Design applies a pure quadratic spectral phase and can optimize it according to the selected temporal metric.</p>
+      </section>
+
+      <section>
+        <h2>Application workflow</h2>
+        <ol>
+          <li>Choose gas, pressure, radius, length, pulse shape, energy, TL duration, wavelength and input phase in <strong>Settings</strong>.</li>
+          <li>Inspect \(\beta_2\), \(\beta_3\), \(\alpha\), and \(\gamma\), then preview the input field.</li>
+          <li>Select propagation terms and the self-steepening solver in <strong>Start &amp; Results</strong>.</li>
+          <li>Run the propagation and check boundary warnings.</li>
+          <li>Inspect temporal/spectral output, transform limit, chirp, group delay, and propagation maps.</li>
+          <li>Use <strong>Phase Analysis</strong> and <strong>GDD Compressor Design</strong> when phase or compression is of interest.</li>
+          <li>Use <strong>Parameter Sweep</strong> to study trends while keeping track of the baseline settings.</li>
+          <li>Repeat selected calculations with finer numerical grids before interpreting small differences quantitatively.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>Model limitations</h2>
+        <p>The implemented propagation model includes Kerr nonlinearity, self-steepening, loss, and dispersion through \(\beta_3\). It does not explicitly include:</p>
+        <ul>
+          <li>photoionization and plasma generation;</li>
+          <li>ionization loss;</li>
+          <li>a time-resolved molecular Raman response;</li>
+          <li>dispersion coefficients beyond \(\beta_3\) in the propagation Taylor expansion;</li>
+          <li>propagation with the complete frequency-dependent modal \(\beta(\omega)\);</li>
+          <li>multimode transverse dynamics;</li>
+          <li>longitudinally varying capillary radius or pressure profiles;</li>
+          <li>real-compressor amplitude response or higher-order compressor phase beyond the applied pure quadratic phase.</li>
+        </ul>
+        <div class="warning-box">The large-core capillary approximation is used for the built-in gas coefficients. Far from the carrier, particularly when a spectrum spans a very large fraction of an octave, the local \(\beta_2+\beta_3\) Taylor expansion can become less accurate than propagation based on the full modal dispersion relation. In regimes where omitted physics is important, the result should be interpreted as the prediction of the model defined above, not as a complete description of every experimental process.</div>
+      </section>
+
+      <section>
+        <h2>References</h2>
+        <ol>
+          <li>M. Nisoli, S. De Silvestri, and O. Svelto, “Generation of high energy 10 fs pulses by a new pulse compression technique,” <em>Applied Physics Letters</em> <strong>68</strong>, 2793–2795 (1996). DOI: 10.1063/1.116609.</li>
+          <li>M. Nisoli et al., “Compression of high-energy laser pulses below 5 fs,” <em>Optics Letters</em> <strong>22</strong>, 522–524 (1997).</li>
+          <li>C. Vozzi et al., “Optimal spectral broadening in hollow-fiber compressor systems,” <em>Applied Physics B</em> <strong>80</strong>, 285–289 (2005). DOI: 10.1007/s00340-004-1721-1.</li>
+          <li>B. Schenkel et al., “Generation of 3.8-fs pulses from adaptive compression of a cascaded hollow fiber supercontinuum,” <em>Optics Letters</em> <strong>28</strong>, 1987–1989 (2003).</li>
+        </ol>
+      </section>
+    </main>
+    <footer class="doc-footer">FibDisp · Davide Faccialà · This web page is a compact rendering of the FibDisp theory and user guide. See the full manual PDF for detailed derivations, installation instructions, and complete parameter documentation.</footer>
+  </div>
+</body>
+</html>

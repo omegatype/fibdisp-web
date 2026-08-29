@@ -17,19 +17,27 @@ const state = {
   lastSweepSettings: null,
   pendingSweepSettings: null,
   fixedRequestId: 0,
+  exportPending: null,
 };
 
 const plotConfig = {
   responsive: true,
   displaylogo: false,
   scrollZoom: true,
-  modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  modeBarButtonsToRemove: [
+    "lasso2d", "select2d", "zoomIn2d", "zoomOut2d", "autoScale2d",
+    "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"
+  ],
+  toImageButtonOptions: { format: "png", scale: 2 },
 };
 
-function baseLayout(title, xTitle, yTitle) {
+function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition = "top-left" } = {}) {
+  const legend = legendPosition === "bottom"
+    ? { orientation: "h", x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom" }
+    : { orientation: "v", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top" };
   return {
-    title: { text: title, font: { size: 13 } },
-    margin: { l: 72, r: 28, t: 44, b: 62 },
+    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.91, yanchor: "top" },
+    margin: { l: 72, r: 28, t: 68, b: 62 },
     paper_bgcolor: "white",
     plot_bgcolor: "white",
     xaxis: {
@@ -47,13 +55,20 @@ function baseLayout(title, xTitle, yTitle) {
       automargin: true,
       zeroline: false,
     },
-    legend: { orientation: "h", y: 1.08, x: 0 },
+    showlegend: showLegend,
+    legend: {
+      ...legend,
+      bgcolor: "rgba(255,255,255,0.68)",
+      bordercolor: "rgba(80,80,80,0.28)",
+      borderwidth: 1,
+      font: { size: 11 },
+    },
     hovermode: "closest",
   };
 }
 
-function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null) {
-  const l = baseLayout(title, xTitle, yTitle);
+function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}) {
+  const l = baseLayout(title, xTitle, yTitle, options);
   l.margin.l = 78;
   l.margin.r = 82;
   l.yaxis.color = POWER_COLOR;
@@ -397,7 +412,9 @@ function renderPhase() {
   }
   const finiteX = pairs[0];
   const xmin = Math.min(...finiteX), xmax = Math.max(...finiteX);
-  const layout = baseLayout("Spectral phase", spectralAxisLabel(unit), "Spectral phase φ (rad)");
+  const layout = baseLayout("Spectral phase", spectralAxisLabel(unit), "Spectral phase φ (rad)", {
+    showLegend: Boolean(state.phaseFit), legendPosition: "top-left"
+  });
   if (Number.isFinite(xmin) && Number.isFinite(xmax)) {
     layout.xaxis.range = [xmin, xmax];
     const yr = visibleYRange(series, xmin, xmax);
@@ -443,7 +460,7 @@ function renderCompressor(c, optimized = false) {
     { x: t.output_fs, y: t.output_mJ_fs, name: "Fiber output", type: "scatter", mode: "lines", opacity: 0.65 },
     { x: t.compressed_fs, y: t.compressed_mJ_fs, name: "After GDD", type: "scatter", mode: "lines" },
     { x: t.tl_fs, y: t.tl_mJ_fs, name: "Transform limited", type: "scatter", mode: "lines", line: { dash: "dash" } },
-  ], { ...baseLayout("Output vs GDD-compressed vs TL", "Time relative to pulse peak (fs)", "Pulse power (mJ/fs)"), xaxis: { title: { text: "Time relative to pulse peak (fs)" }, range: [-t.half_width_fs, t.half_width_fs], automargin: true, zeroline: false } }, plotConfig);
+  ], { ...baseLayout("Output vs GDD-compressed vs TL", "Time relative to pulse peak (fs)", "Pulse power (mJ/fs)", { showLegend: true, legendPosition: "top-left" }), xaxis: { title: { text: "Time relative to pulse peak (fs)" }, range: [-t.half_width_fs, t.half_width_fs], automargin: true, zeroline: false } }, plotConfig);
   renderCompressorSpectrum();
 }
 
@@ -675,19 +692,75 @@ function showSettingsDialog(title, data) {
 }
 
 function downloadText(filename, text, mime = "text/plain") {
-  const blob = new Blob([text], { type: mime }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function downloadSingle() {
-  if (!state.lastRun) return;
-  downloadText("fibdisp_browser_result.json", JSON.stringify({ metrics: state.lastRun.metrics, coefficients: state.lastRun.coefficients, displayed_output: state.display, transform_limited: state.lastRun.tl, spectral_map: state.lastRun.spectral_map, temporal_map: state.lastRun.temporal_map }, null, 2), "application/json");
+function downloadBytes(filename, bytes, mime = "application/octet-stream") {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const blob = new Blob([data], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function downloadSweep() {
+function exportTimestamp() {
+  const d = new Date();
+  const z = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+}
+
+function currentSingleExportRequest() {
+  const postMode = checkedRadio("post-mode") || "Raw";
+  const phaseRequest = state.phaseFit ? {
+    min: Number($("phase-min").value), max: Number($("phase-max").value),
+    order: Math.round(Number($("phase-order").value)), unit: phaseAxis()
+  } : null;
+  return {
+    post_display: { mode: postMode, gdd_fs2: postMode === "Fixed" ? Number($("results-fixed-gdd").value) : 0 },
+    phase_analysis: phaseRequest,
+    phase_analysis_summary: state.phaseFit,
+    compressor: state.compressor ? {
+      gdd_fs2: Number(state.compressor.gdd_fs2),
+      selected_metric: $("compressor-metric").value,
+      optimization: state.compressor.optimization || null,
+      metrics: state.compressor.metrics || null,
+    } : null,
+  };
+}
+
+function downloadSingleH5() {
+  if (!state.lastRun || state.exportPending) return;
+  state.exportPending = "single";
+  $("single-download").disabled = true;
+  $("single-download").textContent = "Preparing HDF5…";
+  setStatus("Preparing full-resolution HDF5 export locally…", "loading");
+  state.worker.postMessage({ type: "export-h5", scope: "single", request: currentSingleExportRequest() });
+}
+
+function downloadSweepH5() {
+  if (!state.sweep || state.exportPending) return;
+  state.exportPending = "sweep";
+  $("sweep-download").disabled = true;
+  $("sweep-download").textContent = "Preparing HDF5…";
+  let compression = null;
+  try { compression = currentSweepCompressionRequest(); } catch { compression = null; }
+  setStatus("Preparing full-resolution sweep HDF5 export locally…", "loading");
+  state.worker.postMessage({
+    type: "export-h5", scope: "sweep",
+    request: { settings_snapshot: state.lastSweepSettings, compressed_view: compression }
+  });
+}
+
+function downloadSweepCsv() {
   const r = state.sweep; if (!r) return;
   const rows = [["parameter","phase_fit_GDD_fs2","optimized_GDD_fs2","actual_output_FWHM_fs","TL_duration_fs","optimized_compressed_duration_fs","grid_warning"]];
   for (let i=0;i<r.values.length;i++) rows.push([r.values[i],r.phase_gdd_fs2[i],r.optimized_gdd_fs2[i],r.actual_output_fwhm_fs[i],r.tl_duration_fs[i],r.optimized_compressed_duration_fs[i],r.boundary_warning[i] ? `${r.boundary_warning_type[i]} @ ${r.boundary_warning_percent[i]}%` : "OK"]);
-  downloadText("fibdisp_sweep.csv", rows.map((row)=>row.map((v)=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n"), "text/csv");
+  downloadText("FibDisp_sweep_table.csv", rows.map((row)=>row.map((v)=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n"), "text/csv");
 }
 
 function resetCompressor() {
@@ -720,7 +793,7 @@ function startWorker() {
     } else if (msg.type === "compressor-result") {
       renderCompressor(msg.result, msg.optimized); hideMessage("compressor-error"); setStatus("Ready — local computation complete.", "ready");
     } else if (msg.type === "sweep-result") {
-      state.sweep = msg.result; state.sweepCompressionCache.clear(); state.lastSweepSettings = state.pendingSweepSettings; state.pendingSweepSettings = null; $("sweep-run").disabled = false; $("sweep-download").disabled = false; $("view-last-sweep-settings").disabled = !state.lastSweepSettings; setProgress("sweep",100); updateSweepCompressionControls(); renderSweepTable(); renderSweepPlot();
+      state.sweep = msg.result; state.sweepCompressionCache.clear(); state.lastSweepSettings = state.pendingSweepSettings; state.pendingSweepSettings = null; $("sweep-run").disabled = false; $("sweep-download").disabled = false; $("sweep-download-csv").disabled = false; $("view-last-sweep-settings").disabled = !state.lastSweepSettings; setProgress("sweep",100); updateSweepCompressionControls(); renderSweepTable(); renderSweepPlot();
       const mode = msg.result.single_pass_length_sweep ? "Fiber-length sweep completed with one propagation to Lmax." : msg.result.single_pass_output_gdd_sweep ? "Compensating-GDD sweep completed with one fiber propagation." : "Sweep completed with one independent propagation per value.";
       $("sweep-status").textContent = `${mode} Browser compute: ${format(msg.result.browser_compute_seconds,2)} s.`; setStatus("Ready — parameter sweep complete.", "ready");
       const warningRows = msg.result.boundary_warning.map((flag, i) => flag ? i : -1).filter((i) => i >= 0);
@@ -731,10 +804,22 @@ function startWorker() {
       }
     } else if (msg.type === "sweep-compression-result") {
       const key = compressionCacheKey(msg.request); state.sweepCompressionCache.set(key,msg.result); $("sweep-status").textContent = "Compressed sweep view ready."; renderSweepPlot();
+    } else if (msg.type === "export-h5-result") {
+      const filename = msg.scope === "sweep" ? `FibDisp_sweep_${exportTimestamp()}.h5` : `FibDisp_run_${exportTimestamp()}.h5`;
+      downloadBytes(filename, msg.bytes, "application/x-hdf5");
+      state.exportPending = null;
+      $("single-download").disabled = !state.lastRun; $("single-download").textContent = "Save run HDF5";
+      $("sweep-download").disabled = !state.sweep; $("sweep-download").textContent = "Save sweep HDF5";
+      setStatus(`Ready — ${msg.scope === "sweep" ? "sweep" : "run"} HDF5 exported locally.`, "ready");
     } else if (msg.type === "error") {
       setStatus("A local computation failed.", "error");
       const friendly = cleanErrorMessage(msg.message);
-      if (msg.scope === "preview") {
+      if (msg.scope === "export-h5") {
+        state.exportPending = null;
+        $("single-download").disabled = !state.lastRun; $("single-download").textContent = "Save run HDF5";
+        $("sweep-download").disabled = !state.sweep; $("sweep-download").textContent = "Save sweep HDF5";
+        showAlert("HDF5 export error", friendly, "error", msg.details || msg.message);
+      } else if (msg.scope === "preview") {
         showMessage("settings-error", friendly);
       } else if (["run","fixed-gdd"].includes(msg.scope)) {
         showMessage("results-error", friendly); $("run-button").disabled = false;
@@ -776,7 +861,7 @@ document.querySelectorAll('input[name="results-axis"]').forEach((x)=>x.addEventL
 document.querySelectorAll('input[name="evolution-mode"]').forEach((x)=>x.addEventListener("change",renderResults));
 document.querySelectorAll('input[name="post-mode"]').forEach((x)=>x.addEventListener("change",requestFixedDisplay));
 $("results-fixed-gdd").addEventListener("change",()=>{ if (checkedRadio("post-mode")==="Fixed") requestFixedDisplay(); });
-$("single-download").addEventListener("click",downloadSingle);
+$("single-download").addEventListener("click",downloadSingleH5);
 
 // Phase
 let previousPhaseAxis="THz";
@@ -797,7 +882,8 @@ $("sweep-compression-mode").addEventListener("change",()=>{ updateSweepCompressi
 $("sweep-fixed-gdd").addEventListener("change",renderSweepPlot);
 document.querySelectorAll('input[name="sweep-axis"]').forEach((x)=>x.addEventListener("change",renderSweepPlot));
 $("sweep-run").addEventListener("click",runSweep);
-$("sweep-download").addEventListener("click",downloadSweep);
+$("sweep-download").addEventListener("click",downloadSweepH5);
+$("sweep-download-csv").addEventListener("click",downloadSweepCsv);
 $("view-current-settings").addEventListener("click",()=>showSettingsDialog("View current settings",currentSettingsSnapshot()));
 $("view-last-sweep-settings").addEventListener("click",()=>showSettingsDialog("View last run sweep settings",state.lastSweepSettings||{}));
 $("settings-dialog-close").addEventListener("click",()=>$("settings-dialog").close());

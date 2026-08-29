@@ -14,9 +14,13 @@
       <div class="app-title">FibDisp</div>
       <div class="app-subtitle">Hollow-core fiber pulse propagation · local browser computation</div>
     </div>
-    <div class="runtime-header">
-      <span id="runtime-dot" class="runtime-dot loading"></span>
-      <span id="runtime-status">Starting WebAssembly runtime…</span>
+    <div class="header-actions">
+      <a class="header-link" href="./about.html">About / Model</a>
+      <a class="header-link" href="./README_FibDisp_EN_v5.pdf" target="_blank" rel="noopener">Full manual PDF</a>
+      <div class="runtime-header">
+        <span id="runtime-dot" class="runtime-dot loading"></span>
+        <span id="runtime-status">Starting WebAssembly runtime…</span>
+      </div>
     </div>
   </header>
 
@@ -82,7 +86,7 @@
           <label><span>Transmission (%)</span><output id="out-transmission">-</output></label>
           <label><span>Broadening Factor</span><output id="out-broadening">-</output></label>
           <label><span>Transform-limited FWHM (fs)</span><output id="out-tl-fwhm">-</output></label>
-          <button id="single-download" class="button small" disabled>Save plotted data</button>
+          <button id="single-download" class="button small" disabled>Save run HDF5</button>
         </div>
 
         <div class="result-actions">
@@ -177,7 +181,8 @@
         <div class="sweep-row">
           <label>Plot <select id="sweep-plot"><option>Phase-fit GDD (fs²)</option><option>Optimized GDD (fs²)</option><option>Actual output FWHM (fs)</option><option selected>TL duration (fs)</option><option>Compressed duration (fs)</option><option>Spectral power map</option><option>Pulse power map (uncompressed)</option><option>Pulse power map (compressed)</option></select></label>
           <div class="inline-line"><span>Spectral axis:</span><label><input type="radio" name="sweep-axis" value="THz" checked /> THz</label><label><input type="radio" name="sweep-axis" value="nm" /> nm</label></div>
-          <button id="sweep-download" class="button small" disabled>Save data</button>
+          <button id="sweep-download" class="button small" disabled>Save sweep HDF5</button>
+          <button id="sweep-download-csv" class="button small" disabled>Save table CSV</button>
         </div>
         <div class="sweep-row">
           <span>Compressed plots:</span>

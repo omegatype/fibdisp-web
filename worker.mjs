@@ -2,6 +2,7 @@ import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyod
 
 let pyodide = null;
 let ready = false;
+let h5pyLoaded = false;
 
 function send(type, payload = {}) {
   self.postMessage({ type, ...payload });
@@ -495,6 +496,173 @@ json.dumps(_payload,allow_nan=False)
 `);
 }
 
+
+async function ensureH5py() {
+  if (h5pyLoaded) return;
+  send("status", { message: "Loading HDF5 exporter…" });
+  await pyodide.loadPackage("h5py");
+  h5pyLoaded = true;
+}
+
+async function exportH5(scope, request = {}) {
+  await readyPromise;
+  await ensureH5py();
+  pyodide.globals.set("_export_request_json", JSON.stringify(request || {}));
+  pyodide.globals.set("_export_scope", String(scope));
+  const path = `/tmp/fibdisp_${scope}_export.h5`;
+  pyodide.globals.set("_export_path", path);
+
+  pyodide.runPython(`
+import h5py
+from datetime import datetime, timezone
+
+_q = json.loads(_export_request_json or '{}')
+_scope = str(_export_scope)
+_path = str(_export_path)
+_str_dt = h5py.string_dtype(encoding='utf-8')
+
+def _safe_name(name):
+    return str(name).replace('/', '_')
+
+def _write_value(group, name, value):
+    name = _safe_name(name)
+    if isinstance(value, dict):
+        sub = group.create_group(name)
+        for k, v in value.items():
+            _write_value(sub, k, v)
+        return
+    if value is None:
+        group.attrs[name] = 'null'
+        return
+    if isinstance(value, str):
+        group.create_dataset(name, data=np.asarray(value, dtype=_str_dt))
+        return
+    if isinstance(value, (bool, np.bool_, int, np.integer, float, np.floating, complex, np.complexfloating)):
+        group.attrs[name] = value
+        return
+    if isinstance(value, np.ndarray):
+        arr = value
+    elif isinstance(value, (list, tuple)):
+        try:
+            arr = np.asarray(value)
+        except Exception:
+            group.create_dataset(name, data=np.asarray(json.dumps(value, default=str), dtype=_str_dt))
+            return
+    else:
+        group.create_dataset(name, data=np.asarray(json.dumps(value, default=str), dtype=_str_dt))
+        return
+
+    if arr.dtype.kind in ('O', 'U', 'S'):
+        flat = arr.ravel()
+        try:
+            strings = np.asarray([str(x) for x in flat], dtype=_str_dt).reshape(arr.shape)
+            group.create_dataset(name, data=strings)
+        except Exception:
+            group.create_dataset(name, data=np.asarray(json.dumps(value, default=str), dtype=_str_dt))
+        return
+
+    kwargs = {}
+    if arr.ndim > 0 and arr.size >= 64:
+        kwargs = dict(compression='gzip', compression_opts=4, shuffle=True)
+    group.create_dataset(name, data=arr, **kwargs)
+
+def _coefficients(params):
+    if params.get('gas') == 'Manual':
+        return {
+            'beta2_fs2_m': float(params['beta2_fs2_m']),
+            'beta3_fs3_m': float(params['beta3_fs3_m']),
+            'alpha_1_m': float(params['alpha_1_m']),
+            'gamma_1_W_m': float(params['gamma_1_W_m']),
+        }
+    return fc.display_gas_coefficients(
+        params['gas'], params['wavelength_nm'], params['pressure'], params['radius_um'])
+
+with h5py.File(_path, 'w') as h5:
+    h5.attrs['format'] = 'FibDisp HDF5'
+    h5.attrs['format_version'] = '1.0'
+    h5.attrs['author'] = 'Davide Faccialà'
+    h5.attrs['export_utc'] = datetime.now(timezone.utc).isoformat()
+    h5.attrs['export_scope'] = _scope
+    h5.attrs['note'] = 'Arrays are full-resolution numerical data; plotting decimation is not used in this file.'
+
+    if _scope == 'single':
+        if _last_res is None:
+            raise ValueError('Run a propagation before exporting HDF5.')
+        _write_value(h5, 'input_parameters', dict(_last_run_params or {}))
+        _write_value(h5, 'propagation_coefficients', _coefficients(dict(_last_run_params or {})))
+        _write_value(h5, 'result', _last_res)
+
+        _r = _last_res
+        _f = np.asarray(_r['f'], dtype=float)
+        _f0 = float(_r['f0'])
+        _nu_hz = _f0 - _f
+        _wl_nm = np.full_like(_nu_hz, np.nan, dtype=float)
+        _positive = _nu_hz > 0
+        _wl_nm[_positive] = fc.C_LIGHT / _nu_hz[_positive] * 1e9
+        _write_value(h5, 'convenience_axes', {
+            'time_fs': np.asarray(_r['t'], dtype=float) * 1e15,
+            'fft_frequency_Hz': _f,
+            'physical_frequency_Hz': _nu_hz,
+            'physical_frequency_THz': _nu_hz * 1e-12,
+            'wavelength_nm': _wl_nm,
+            'propagation_z_cm': np.asarray(_r['spectral_z_m'], dtype=float) * 1e2,
+        })
+
+        _post = _q.get('post_display') or {}
+        if str(_post.get('mode', 'Raw')) == 'Fixed':
+            _post_result = fc.apply_gdd_to_output(_r, float(_post.get('gdd_fs2', 0.0)))
+            _write_value(h5, 'selected_fixed_gdd_display', _post_result)
+
+        _phase = _q.get('phase_analysis')
+        if _phase:
+            _a = float(_phase['min']); _b = float(_phase['max']); _order = int(_phase['order'])
+            _unit = str(_phase.get('unit', 'THz'))
+            if _unit == 'nm':
+                _fa = fc.C_LIGHT / (_a * 1e-9) * 1e-12
+                _fb = fc.C_LIGHT / (_b * 1e-9) * 1e-12
+                _minf, _maxf = sorted((_fa, _fb))
+            else:
+                _minf, _maxf = _a, _b
+            _coeff, _xthz, _fit = fc.polynomial_fit(_r, _minf, _maxf, _order)
+            _write_value(h5, 'phase_analysis', {
+                'request': _phase,
+                'coefficients': np.asarray(_coeff, dtype=float),
+                'frequency_THz': np.asarray(_xthz, dtype=float),
+                'fitted_phase_rad': np.asarray(_fit, dtype=float),
+            })
+
+        _comp = _q.get('compressor')
+        if _comp:
+            _gdd = float(_comp.get('gdd_fs2', 0.0))
+            _comp_full = fc.apply_gdd_to_output(_r, _gdd)
+            _write_value(h5, 'compressor', _comp_full)
+            _write_value(h5, 'compressor_web_summary', _comp)
+
+        _write_value(h5, 'web_export_state', _q)
+
+    elif _scope == 'sweep':
+        if _last_sweep is None:
+            raise ValueError('Run a parameter sweep before exporting HDF5.')
+        _write_value(h5, 'settings_snapshot', _q.get('settings_snapshot') or {})
+        _write_value(h5, 'sweep', _last_sweep)
+        _view = _q.get('compressed_view')
+        if _view:
+            _compressed = fc.build_sweep_compressed_temporal_map(
+                _last_sweep,
+                mode=str(_view.get('mode', 'optimized')),
+                fixed_gdd_fs2=float(_view.get('fixed_gdd_fs2', 0.0)),
+                metric=str(_view.get('metric') or _last_sweep.get('optimize_metric', 'outer_fwhm95')))
+            _write_value(h5, 'selected_compressed_view', _compressed)
+        _write_value(h5, 'web_export_state', _q)
+    else:
+        raise ValueError('Unknown HDF5 export scope: %s' % _scope)
+`);
+
+  const bytes = pyodide.FS.readFile(path).slice();
+  try { pyodide.FS.unlink(path); } catch (_) {}
+  self.postMessage({ type: "export-h5-result", scope, bytes }, [bytes.buffer]);
+}
+
 self.onmessage = async (event) => {
   const msg = event.data || {};
   try {
@@ -523,6 +691,8 @@ self.onmessage = async (event) => {
       send("sweep-result", { result });
     } else if (msg.type === "sweep-compression") {
       result = await sweepCompression(msg.request); send("sweep-compression-result", { result, request: msg.request });
+    } else if (msg.type === "export-h5") {
+      await exportH5(msg.scope, msg.request || {});
     } else if (msg.type === "ping") {
       send("ready", { pyodideVersion: pyodide.version });
     }
