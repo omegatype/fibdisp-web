@@ -54,8 +54,8 @@ function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition 
     ? { orientation: "h", x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom" }
     : { orientation: "v", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top" };
   return {
-    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.84, yanchor: "top" },
-    margin: { l: 72, r: 28, t: 104, b: 62 },
+    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.97, yanchor: "top" },
+    margin: { l: 72, r: 28, t: 60, b: 62 },
     paper_bgcolor: "white",
     plot_bgcolor: "white",
     xaxis: {
