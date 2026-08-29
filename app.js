@@ -36,15 +36,18 @@ function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition 
     ? { orientation: "h", x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom" }
     : { orientation: "v", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top" };
   return {
-    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.91, yanchor: "top" },
-    margin: { l: 72, r: 28, t: 68, b: 62 },
+    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.85, yanchor: "top" },
+    margin: { l: 72, r: 28, t: 82, b: 62 },
     paper_bgcolor: "white",
     plot_bgcolor: "white",
     xaxis: {
       title: { text: xTitle, font: { color: AXIS_COLOR } },
       tickfont: { color: AXIS_COLOR },
       linecolor: AXIS_COLOR,
-      mirror: false,
+      linewidth: 1,
+      showline: true,
+      mirror: true,
+      ticks: "outside",
       automargin: true,
       zeroline: false,
     },
@@ -52,6 +55,10 @@ function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition 
       title: { text: yTitle, font: { color: AXIS_COLOR } },
       tickfont: { color: AXIS_COLOR },
       linecolor: AXIS_COLOR,
+      linewidth: 1,
+      showline: true,
+      mirror: true,
+      ticks: "outside",
       automargin: true,
       zeroline: false,
     },
@@ -73,6 +80,8 @@ function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}
   l.margin.r = 82;
   l.yaxis.color = POWER_COLOR;
   l.yaxis.linecolor = POWER_COLOR;
+  l.yaxis.showline = true;
+  l.yaxis.mirror = false;
   l.yaxis.tickfont = { color: POWER_COLOR };
   l.yaxis.title = { text: yTitle, font: { color: POWER_COLOR } };
   l.yaxis2 = {
@@ -80,6 +89,10 @@ function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}
     tickfont: { color: PHASE_COLOR },
     color: PHASE_COLOR,
     linecolor: PHASE_COLOR,
+    linewidth: 1,
+    showline: true,
+    mirror: false,
+    ticks: "outside",
     overlaying: "y",
     side: "right",
     automargin: true,
@@ -456,11 +469,18 @@ function renderCompressor(c, optimized = false) {
     $("compressor-status").textContent = `Applied pure quadratic spectral phase: GDD = ${format(c.gdd_fs2,6)} fs².`;
   }
   const t = c.time;
+  const timeLayout = baseLayout(
+    "Output vs GDD-compressed vs TL",
+    "Time relative to pulse peak (fs)",
+    "Pulse power (mJ/fs)",
+    { showLegend: true, legendPosition: "top-left" }
+  );
+  timeLayout.xaxis.range = [-t.half_width_fs, t.half_width_fs];
   Plotly.react("plot-compressor-time", [
     { x: t.output_fs, y: t.output_mJ_fs, name: "Fiber output", type: "scatter", mode: "lines", opacity: 0.65 },
     { x: t.compressed_fs, y: t.compressed_mJ_fs, name: "After GDD", type: "scatter", mode: "lines" },
     { x: t.tl_fs, y: t.tl_mJ_fs, name: "Transform limited", type: "scatter", mode: "lines", line: { dash: "dash" } },
-  ], { ...baseLayout("Output vs GDD-compressed vs TL", "Time relative to pulse peak (fs)", "Pulse power (mJ/fs)", { showLegend: true, legendPosition: "top-left" }), xaxis: { title: { text: "Time relative to pulse peak (fs)" }, range: [-t.half_width_fs, t.half_width_fs], automargin: true, zeroline: false } }, plotConfig);
+  ], timeLayout, plotConfig);
   renderCompressorSpectrum();
 }
 

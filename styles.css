@@ -50,7 +50,19 @@ input[readonly] { background: #eeeeee; color: #333; }
 .plot-grid { display: grid; gap: 7px; margin-top: 7px; }
 .plot-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .plot-grid.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.plot-panel { min-width: 0; min-height: 290px; height: 34vh; background: white; border: 1px solid #c4c4c4; }
+.plot-panel {
+  min-width: 0;
+  min-height: 290px;
+  height: 34vh;
+  background: #ececec;
+  border: 1px solid #969696;
+  border-radius: 2px;
+  padding: 3px;
+  box-shadow:
+    inset 0 0 0 1px #f7f7f7,
+    inset 0 0 4px rgba(0,0,0,0.16),
+    0 0 0 1px #d7d7d7;
+}
 .plot-grid.six .plot-panel { min-height: 265px; height: 32vh; }
 .phase-grid .plot-panel, .compressor-grid .plot-panel { min-height: 430px; height: 62vh; }
 .sweep-plot { min-height: 380px; height: 52vh; }
@@ -95,9 +107,41 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
   .plot-grid.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px 10px 9px;
+  }
+  .app-title { font-size: 20px; }
+  .app-subtitle { font-size: 11px; line-height: 1.25; }
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .header-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 29px;
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+  .runtime-header {
+    display: flex;
+    flex: 1 1 100%;
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  #runtime-status {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tabbar { padding-left: 6px; padding-right: 6px; }
   .settings-grid, .plot-grid.two, .plot-grid.six, .results-control-layout { grid-template-columns: 1fr; }
-  .plot-panel, .plot-grid.six .plot-panel { height: 330px; }
-  .runtime-header { display: none; }
+  .plot-panel, .plot-grid.six .plot-panel { height: 340px; }
 }
 
 .alert-dialog { width: min(650px, 90vw); }
@@ -113,6 +157,21 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 /* Keep Plotly's compact toolbar in the reserved upper-right strip. */
 .js-plotly-plot .modebar-container { top: 2px !important; right: 3px !important; }
 .js-plotly-plot .modebar { background: rgba(255,255,255,0.72) !important; border-radius: 3px; }
+
+
+/* Plot panels use a symmetric recessed frame on all four sides. */
+.plot-panel > .js-plotly-plot,
+.plot-panel > .plot-container,
+.plot-panel .plot-container {
+  border-radius: 1px;
+}
+
+@media (max-width: 430px) {
+  .header-actions { align-items: stretch; }
+  .header-link { justify-content: center; flex: 1 1 auto; }
+  .runtime-header { padding-top: 1px; }
+  .tab-button { padding: 7px 10px; }
+}
 
 /* Documentation page */
 .doc-body { background: #f1f1f1; }
@@ -132,4 +191,7 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 .doc-main .warning-box { border: 1px solid #d1b46a; background: #fff9e7; padding: 12px 15px; margin: 14px 0; }
 .doc-main code { background: #f1f1f1; padding: 1px 4px; border-radius: 2px; }
 .doc-footer { border-top: 1px solid #ccc; color: var(--muted); padding: 14px 30px 24px; font-size: 12px; }
-@media (max-width: 700px) { .header-actions .header-link { display: none; } .doc-main { padding: 18px 16px 30px; } .doc-header { padding: 16px; } }
+@media (max-width: 700px) {
+  .doc-main { padding: 18px 16px 30px; }
+  .doc-header { padding: 16px; }
+}
