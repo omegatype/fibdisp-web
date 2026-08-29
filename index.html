@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="FibDisp: ultrashort pulse propagation in gas-filled hollow-core fibers, computed locally in the browser." />
+  <title>FibDisp</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.plot.ly/plotly-cartesian-3.7.0.min.js" charset="utf-8"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <div class="app-title">FibDisp</div>
+      <div class="app-subtitle">Hollow-core fiber pulse propagation · local browser computation</div>
+    </div>
+    <div class="runtime-header">
+      <span id="runtime-dot" class="runtime-dot loading"></span>
+      <span id="runtime-status">Starting WebAssembly runtime…</span>
+    </div>
+  </header>
+
+  <nav class="tabbar" aria-label="FibDisp sections">
+    <button class="tab-button active" data-tab="settings">Settings</button>
+    <button class="tab-button" data-tab="results">Start &amp; Results</button>
+    <button class="tab-button" data-tab="phase">Phase Analysis</button>
+    <button class="tab-button" data-tab="compressor">GDD Compressor Design</button>
+    <button class="tab-button" data-tab="sweep">Parameter Sweep</button>
+  </nav>
+
+  <main class="app-main">
+    <section id="tab-settings" class="tab-panel active">
+      <div class="settings-grid">
+        <fieldset class="groupbox">
+          <legend>Gas and fiber parameters</legend>
+          <label class="row"><span>Select gas</span><select id="gas"><option>Helium</option><option>Neon</option><option selected>Argon</option><option>Krypton</option><option>Xenon</option><option>Nitrogen</option><option>Manual</option></select></label>
+          <label class="row"><span>Pressure (atm)</span><input id="pressure" type="number" step="0.01" value="0.5" /></label>
+          <label class="row"><span>Fiber length (cm)</span><input id="fiber_length_cm" type="number" step="1" value="100" /></label>
+          <label class="row"><span>Radius (µm)</span><input id="radius_um" type="number" step="1" value="150" /></label>
+        </fieldset>
+
+        <fieldset class="groupbox">
+          <legend>Pulse parameters</legend>
+          <label class="row"><span>Pulse shape</span><select id="pulse_shape"><option>Gaussian</option><option>Sech</option><option>Super-Gaussian</option></select></label>
+          <label class="row"><span>Energy (mJ)</span><input id="energy_mJ" type="number" step="0.01" value="0.20" /></label>
+          <label class="row"><span>TL FWHM (fs)</span><input id="tl_fwhm_fs" type="number" step="1" value="30" /></label>
+          <label class="row"><span>Wavelength (nm)</span><input id="wavelength_nm" type="number" step="1" value="800" /></label>
+          <label class="row"><span>GDD (fs²)</span><input id="GDD_fs2" type="number" step="1" value="0" /></label>
+          <label class="row"><span>TOD (fs³)</span><input id="TOD_fs3" type="number" step="1" value="0" /></label>
+        </fieldset>
+
+        <fieldset class="groupbox">
+          <legend>Simulation parameters</legend>
+          <label class="row"><span>Points prop. axis z=</span><input id="NZ" type="number" min="2" max="5000" step="1" value="300" /></label>
+          <label class="row"><span>Points time/freq 2ⁿ, n=</span><input id="n_exp" type="number" min="9" max="15" step="1" value="12" /></label>
+          <label class="row"><span>ratio time/FWHM m=</span><input id="XN" type="number" step="1" value="20" /></label>
+          <div class="small-note">The browser calculation uses the local CPU and RAM. Large FFT grids and sweeps can take appreciable time.</div>
+        </fieldset>
+
+        <fieldset class="groupbox">
+          <legend>Propagation coefficients</legend>
+          <label class="row"><span>β₂ (fs²/m)</span><input id="beta2_fs2_m" type="number" step="0.1" readonly /></label>
+          <label class="row"><span>β₃ (fs³/m)</span><input id="beta3_fs3_m" type="number" step="0.1" readonly /></label>
+          <label class="row"><span>α (1/m)</span><input id="alpha_1_m" type="number" step="0.001" readonly /></label>
+          <label class="row"><span>γ (1/(W·m))</span><input id="gamma_1_W_m" type="number" step="1e-10" readonly /></label>
+          <div class="small-note">Built-in gas: α is shown at the carrier. Manual: α is constant over the spectrum.</div>
+        </fieldset>
+      </div>
+
+      <div class="button-row centered"><button id="preview-button" class="button">Confirm (preview input)</button></div>
+      <div id="settings-error" class="message error" hidden></div>
+      <div class="plot-grid two">
+        <div id="plot-input-time" class="plot-panel"></div>
+        <div id="plot-input-spectrum" class="plot-panel"></div>
+      </div>
+    </section>
+
+    <section id="tab-results" class="tab-panel">
+      <div class="results-control-layout">
+        <div class="output-summary">
+          <label><span>Output energy (mJ)</span><output id="out-energy">-</output></label>
+          <label><span>Transmission (%)</span><output id="out-transmission">-</output></label>
+          <label><span>Broadening Factor</span><output id="out-broadening">-</output></label>
+          <label><span>Transform-limited FWHM (fs)</span><output id="out-tl-fwhm">-</output></label>
+          <button id="single-download" class="button small" disabled>Save plotted data</button>
+        </div>
+
+        <div class="result-actions">
+          <label class="inline"><input id="hide-phase" type="checkbox" /> Hide phase</label>
+          <div class="inline-line"><span>Spectral axis:</span><label><input type="radio" name="results-axis" value="THz" checked /> THz</label><label><input type="radio" name="results-axis" value="nm" /> nm</label></div>
+          <div class="inline-line"><button id="run-button" class="button primary" disabled>Start!</button><progress id="progress" max="100" value="0"></progress><span id="progress-label">0%</span></div>
+          <label class="inline-line"><span>Saved z samples:</span><input id="n_z_spectra" class="short" type="number" min="2" max="100" step="1" value="10" /></label>
+
+          <fieldset class="subgroup">
+            <legend>Result display</legend>
+            <div class="inline-line"><label><input type="radio" name="post-mode" value="Raw" checked /> Raw output</label><label><input type="radio" name="post-mode" value="Fixed" /> Fixed GDD</label><input id="results-fixed-gdd" class="short" type="number" step="1" value="0" /><span>fs²</span></div>
+            <div class="inline-line"><span>z evolution:</span><label><input type="radio" name="evolution-mode" value="Spectrum" checked /> Spectrum</label><label><input type="radio" name="evolution-mode" value="Time" /> Time</label></div>
+          </fieldset>
+        </div>
+
+        <fieldset class="groupbox terms-box">
+          <legend>Propagation terms</legend>
+          <label><input id="enable_spm" type="checkbox" checked /> SPM</label>
+          <label><input id="enable_self_steepening" type="checkbox" checked /> Self-steepening</label>
+          <label><input id="enable_gvd" type="checkbox" checked /> GVD (β₂)</label>
+          <label><input id="enable_tod" type="checkbox" checked /> TOD (β₃)</label>
+          <label><input id="enable_loss" type="checkbox" checked /> Loss (α)</label>
+          <hr />
+          <label>Self-steepening solver<select id="self_steepening_solver"><option value="fast">Fast (exponential)</option><option value="rk4">Accurate RK4 (adaptive)</option></select></label>
+          <div class="small-note">RK4 is slower and internally substeps the nonlinear shock term when required.</div>
+        </fieldset>
+      </div>
+      <div id="results-message" class="message" hidden></div>
+      <div id="results-error" class="message error" hidden></div>
+      <div class="plot-grid six">
+        <div id="plot-time" class="plot-panel"></div>
+        <div id="plot-spectrum" class="plot-panel"></div>
+        <div id="plot-tl" class="plot-panel"></div>
+        <div id="plot-chirp" class="plot-panel"></div>
+        <div id="plot-gd" class="plot-panel"></div>
+        <div id="plot-evolution" class="plot-panel"></div>
+      </div>
+    </section>
+
+    <section id="tab-phase" class="tab-panel">
+      <div class="phase-controls compact-controls">
+        <label>order <input id="phase-order" class="short" type="number" min="1" step="1" value="2" /></label>
+        <label><span id="phase-min-label">min. freq (THz)</span> <input id="phase-min" class="short" type="number" step="0.1" value="0" /></label>
+        <label><span id="phase-max-label">max. freq (THz)</span> <input id="phase-max" class="short" type="number" step="0.1" value="0" /></label>
+        <div class="inline-line"><span>Spectral axis:</span><label><input type="radio" name="phase-axis" value="THz" checked /> THz</label><label><input type="radio" name="phase-axis" value="nm" /> nm</label></div>
+        <button id="phase-fit-button" class="button">polynomial fit</button>
+        <span class="equation-text">φ = p₀ + p₁ω + p₂/2 ω² + p₃/6 ω³ + …</span>
+      </div>
+      <div id="phase-coefficients" class="coefficient-line">coefficients: -</div>
+      <div id="phase-message" class="message error" hidden></div>
+      <div class="plot-grid two phase-grid">
+        <div id="plot-phase" class="plot-panel"></div>
+        <div id="plot-phase-spectrum" class="plot-panel"></div>
+      </div>
+    </section>
+
+    <section id="tab-compressor" class="tab-panel">
+      <div class="compressor-controls compact-controls">
+        <label>Applied GDD (fs²) <input id="compressor-gdd" class="medium" type="number" step="1" value="0" /></label>
+        <button id="compressor-apply" class="button">Apply GDD</button>
+        <button id="compressor-optimize" class="button">Optimize GDD</button>
+        <label>Optimize for:
+          <select id="compressor-metric"><option>95%-bounded FWHM</option><option>RMS duration</option><option>95% energy width</option><option>Main FWHM</option></select>
+        </label>
+        <div class="inline-line"><span>Spectral axis:</span><label><input type="radio" name="compressor-axis" value="THz" checked /> THz</label><label><input type="radio" name="compressor-axis" value="nm" /> nm</label></div>
+      </div>
+      <div id="compressor-metrics" class="metrics-text">Output: -<br />After GDD: -<br />Transform limited: -</div>
+      <div id="compressor-status" class="status-line">Run a propagation first, then apply or optimize GDD.</div>
+      <div id="compressor-error" class="message error" hidden></div>
+      <div class="plot-grid two compressor-grid">
+        <div id="plot-compressor-time" class="plot-panel"></div>
+        <div id="plot-compressor-spectrum" class="plot-panel"></div>
+      </div>
+    </section>
+
+    <section id="tab-sweep" class="tab-panel">
+      <div class="sweep-controls">
+        <div class="sweep-row">
+          <label>Parameter <select id="sweep-parameter"><option>Pressure (atm)</option><option>Fiber length (cm)</option><option>Radius (µm)</option><option>Energy (mJ)</option><option>TL FWHM (fs)</option><option>Wavelength (nm)</option><option>Input GDD (fs²)</option><option>Input TOD (fs³)</option><option>β2 (fs²/m)</option><option>β3 (fs³/m)</option><option>α (1/m)</option><option>γ (1/(W·m))</option><option>Compensating GDD (fs²)</option></select></label>
+          <label>Min <input id="sweep-min" class="short" type="number" value="0.25" /></label>
+          <label>Max <input id="sweep-max" class="short" type="number" value="0.75" /></label>
+          <label>N values <input id="sweep-points" class="tiny" type="number" min="2" max="80" value="10" /></label>
+          <button id="sweep-run" class="button primary" disabled>Run Sweep</button>
+          <progress id="sweep-progress" max="100" value="0"></progress><span id="sweep-progress-label">0%</span>
+        </div>
+        <div class="sweep-row">
+          <label>Spacing <select id="sweep-spacing"><option>Linear</option><option>Logarithmic</option><option>Exponential</option></select></label>
+          <label>Base <input id="sweep-base" class="short" type="number" value="10" /></label>
+          <label>Compressor criterion <select id="sweep-metric"><option>95%-bounded FWHM</option><option>RMS duration</option><option>95% energy width</option><option>Main FWHM</option></select></label>
+        </div>
+        <div class="sweep-row"><strong>Preview</strong><span id="sweep-preview"></span></div>
+        <div class="sweep-row">
+          <label>Plot <select id="sweep-plot"><option>Phase-fit GDD (fs²)</option><option>Optimized GDD (fs²)</option><option>Actual output FWHM (fs)</option><option selected>TL duration (fs)</option><option>Compressed duration (fs)</option><option>Spectral power map</option><option>Pulse power map (uncompressed)</option><option>Pulse power map (compressed)</option></select></label>
+          <div class="inline-line"><span>Spectral axis:</span><label><input type="radio" name="sweep-axis" value="THz" checked /> THz</label><label><input type="radio" name="sweep-axis" value="nm" /> nm</label></div>
+          <button id="sweep-download" class="button small" disabled>Save data</button>
+        </div>
+        <div class="sweep-row">
+          <span>Compressed plots:</span>
+          <select id="sweep-compression-mode"><option>Optimized GDD</option><option>Fixed GDD</option></select>
+          <label>Fixed GDD (fs²) <input id="sweep-fixed-gdd" class="short" type="number" value="0" /></label>
+        </div>
+        <div class="sweep-row">
+          <button id="view-current-settings" class="button small">View current settings</button>
+          <button id="view-last-sweep-settings" class="button small" disabled>View last run sweep settings</button>
+        </div>
+        <div id="sweep-status" class="status-line">Uses current Settings and Phase Analysis fit settings; compressor criterion is selected here.</div>
+        <div id="sweep-error" class="message error" hidden></div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="sweep-table">
+          <thead><tr><th id="sweep-table-param">Parameter</th><th>Phase-fit GDD (fs²)</th><th>Optimized GDD (fs²)</th><th>Actual output FWHM (fs)</th><th>TL duration (fs)</th><th>Optimized duration (fs)</th><th>Grid warning</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="plot-sweep" class="plot-panel sweep-plot"></div>
+    </section>
+  </main>
+
+  <dialog id="settings-dialog">
+    <div class="dialog-head"><strong id="settings-dialog-title">Settings</strong><button id="settings-dialog-close" class="button small">Close</button></div>
+    <pre id="settings-dialog-content"></pre>
+  </dialog>
+
+  <dialog id="alert-dialog" class="alert-dialog">
+    <div class="dialog-head"><strong id="alert-dialog-title">FibDisp message</strong><button id="alert-dialog-close" class="button small">Close</button></div>
+    <div id="alert-dialog-content" class="alert-dialog-content"></div>
+    <details id="alert-dialog-details" class="alert-dialog-details" hidden>
+      <summary>Technical details</summary>
+      <pre id="alert-dialog-details-text"></pre>
+    </details>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
