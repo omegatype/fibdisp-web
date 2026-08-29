@@ -15,7 +15,9 @@
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: var(--text); background: var(--bg); font-size: 13px; }
 .app-header { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 14px; background: #f5f5f5; border-bottom: 1px solid #b7b7b7; }
+.app-title-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .app-title { font-size: 22px; font-weight: 700; }
+.version-badge { font-size: 10px; font-weight: 700; color: #555; background: #e7e7e7; border: 1px solid #aaa; border-radius: 10px; padding: 1px 6px; white-space: nowrap; }
 .app-subtitle { color: var(--muted); margin-top: 2px; }
 .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .header-link { color: #2f5f98; text-decoration: none; border: 1px solid #a8b6c7; background: #fbfbfb; border-radius: 3px; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
@@ -54,14 +56,27 @@ input[readonly] { background: #eeeeee; color: #333; }
   min-width: 0;
   min-height: 290px;
   height: 34vh;
-  background: #ececec;
-  border: 1px solid #969696;
-  border-radius: 2px;
-  padding: 3px;
+  position: relative;
+  overflow: hidden;
+  background: #e8e8e8;
+  border: 0;
+  border-radius: 3px;
+  padding: 4px;
+  box-shadow: none;
+}
+/* A non-directional engraved frame drawn ABOVE Plotly, so all four sides stay visible. */
+.plot-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid #858585;
+  border-radius: 3px;
   box-shadow:
-    inset 0 0 0 1px #f7f7f7,
-    inset 0 0 4px rgba(0,0,0,0.16),
-    0 0 0 1px #d7d7d7;
+    inset 0 0 0 1px #f8f8f8,
+    inset 0 0 0 2px #b6b6b6,
+    0 0 0 1px #d0d0d0;
+  pointer-events: none;
+  z-index: 10000;
 }
 .plot-grid.six .plot-panel { min-height: 265px; height: 32vh; }
 .phase-grid .plot-panel, .compressor-grid .plot-panel { min-height: 430px; height: 62vh; }
@@ -108,40 +123,60 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 }
 @media (max-width: 700px) {
   .app-header {
-    align-items: flex-start;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
     gap: 7px;
     padding: 8px 10px 9px;
+    width: 100%;
+    overflow: visible;
   }
+  .app-header > div:first-child { min-width: 0; width: 100%; }
   .app-title { font-size: 20px; }
-  .app-subtitle { font-size: 11px; line-height: 1.25; }
+  .app-subtitle { font-size: 11px; line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
   .header-actions {
     width: 100%;
-    justify-content: flex-start;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
+    justify-content: stretch;
+    align-items: stretch;
   }
   .header-link {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    min-height: 29px;
-    padding: 4px 7px;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 30px;
+    padding: 4px 6px;
     font-size: 11px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
   }
   .runtime-header {
+    grid-column: 1 / -1;
     display: flex;
-    flex: 1 1 100%;
     width: 100%;
-    text-align: left;
-    justify-content: flex-start;
     min-width: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+    gap: 7px;
+    padding: 2px 1px 0;
   }
+  .runtime-dot { flex: 0 0 9px; margin-top: 2px; }
   #runtime-status {
+    min-width: 0;
     white-space: normal;
     overflow-wrap: anywhere;
+    word-break: normal;
   }
   .tabbar { padding-left: 6px; padding-right: 6px; }
   .settings-grid, .plot-grid.two, .plot-grid.six, .results-control-layout { grid-template-columns: 1fr; }
-  .plot-panel, .plot-grid.six .plot-panel { height: 340px; }
+  .plot-panel, .plot-grid.six .plot-panel { height: 360px; }
 }
 
 .alert-dialog { width: min(650px, 90vw); }
@@ -155,8 +190,8 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 .alert-dialog-details pre { max-height: 220px; overflow: auto; background: #f5f5f5; border: 1px solid #ddd; padding: 8px; font-size: 11px; }
 
 /* Keep Plotly's compact toolbar in the reserved upper-right strip. */
-.js-plotly-plot .modebar-container { top: 2px !important; right: 3px !important; }
-.js-plotly-plot .modebar { background: rgba(255,255,255,0.72) !important; border-radius: 3px; }
+.js-plotly-plot .modebar-container { top: 5px !important; right: 6px !important; z-index: 10001 !important; }
+.js-plotly-plot .modebar { background: rgba(255,255,255,0.78) !important; border: 1px solid rgba(100,100,100,0.18); border-radius: 3px; }
 
 
 /* Plot panels use a symmetric recessed frame on all four sides. */
@@ -167,10 +202,8 @@ dialog pre { padding: 10px 14px; margin: 0; white-space: pre-wrap; font-family: 
 }
 
 @media (max-width: 430px) {
-  .header-actions { align-items: stretch; }
-  .header-link { justify-content: center; flex: 1 1 auto; }
-  .runtime-header { padding-top: 1px; }
   .tab-button { padding: 7px 10px; }
+  .plot-panel, .plot-grid.six .plot-panel { height: 350px; }
 }
 
 /* Documentation page */

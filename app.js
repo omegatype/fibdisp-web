@@ -31,13 +31,31 @@ const plotConfig = {
   toImageButtonOptions: { format: "png", scale: 2 },
 };
 
+function singleFrameShapes() {
+  return [{
+    type: "rect", xref: "paper", yref: "paper",
+    x0: 0, x1: 1, y0: 0, y1: 1,
+    line: { color: AXIS_COLOR, width: 1 },
+    fillcolor: "rgba(0,0,0,0)", layer: "above"
+  }];
+}
+
+function dualFrameShapes() {
+  return [
+    { type: "line", xref: "paper", yref: "paper", x0: 0, x1: 1, y0: 0, y1: 0, line: { color: AXIS_COLOR, width: 1 }, layer: "above" },
+    { type: "line", xref: "paper", yref: "paper", x0: 0, x1: 1, y0: 1, y1: 1, line: { color: AXIS_COLOR, width: 1 }, layer: "above" },
+    { type: "line", xref: "paper", yref: "paper", x0: 0, x1: 0, y0: 0, y1: 1, line: { color: POWER_COLOR, width: 1 }, layer: "above" },
+    { type: "line", xref: "paper", yref: "paper", x0: 1, x1: 1, y0: 0, y1: 1, line: { color: PHASE_COLOR, width: 1 }, layer: "above" },
+  ];
+}
+
 function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition = "top-left" } = {}) {
   const legend = legendPosition === "bottom"
     ? { orientation: "h", x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom" }
     : { orientation: "v", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top" };
   return {
-    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.85, yanchor: "top" },
-    margin: { l: 72, r: 28, t: 82, b: 62 },
+    title: { text: title, font: { size: 13 }, x: 0.02, xanchor: "left", y: 0.84, yanchor: "top" },
+    margin: { l: 72, r: 28, t: 104, b: 62 },
     paper_bgcolor: "white",
     plot_bgcolor: "white",
     xaxis: {
@@ -46,7 +64,8 @@ function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition 
       linecolor: AXIS_COLOR,
       linewidth: 1,
       showline: true,
-      mirror: true,
+      mirror: "allticks",
+      layer: "above traces",
       ticks: "outside",
       automargin: true,
       zeroline: false,
@@ -57,11 +76,13 @@ function baseLayout(title, xTitle, yTitle, { showLegend = false, legendPosition 
       linecolor: AXIS_COLOR,
       linewidth: 1,
       showline: true,
-      mirror: true,
+      mirror: "allticks",
+      layer: "above traces",
       ticks: "outside",
       automargin: true,
       zeroline: false,
     },
+    shapes: singleFrameShapes(),
     showlegend: showLegend,
     legend: {
       ...legend,
@@ -82,6 +103,7 @@ function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}
   l.yaxis.linecolor = POWER_COLOR;
   l.yaxis.showline = true;
   l.yaxis.mirror = false;
+  l.yaxis.layer = "above traces";
   l.yaxis.tickfont = { color: POWER_COLOR };
   l.yaxis.title = { text: yTitle, font: { color: POWER_COLOR } };
   l.yaxis2 = {
@@ -92,6 +114,7 @@ function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}
     linewidth: 1,
     showline: true,
     mirror: false,
+    layer: "above traces",
     ticks: "outside",
     overlaying: "y",
     side: "right",
@@ -99,6 +122,7 @@ function dualLayout(title, xTitle, yTitle, y2Title, y2Range = null, options = {}
     showgrid: false,
     zeroline: false,
   };
+  l.shapes = dualFrameShapes();
   if (y2Range) l.yaxis2.range = y2Range;
   return l;
 }
