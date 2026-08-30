@@ -1,0 +1,2229 @@
+\documentclass[11pt,a4paper]{article}
+
+% Document layout and typography.
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+
+\definecolor{codegray}{RGB}{245,245,245}
+\definecolor{darkblue}{RGB}{25,65,120}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=darkblue,
+    urlcolor=darkblue,
+    citecolor=darkblue,
+    pdftitle={FibDisp -- Theory and User Guide},
+    pdfauthor={Davide Facciala}
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codegray},
+    frame=single,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true
+}
+
+\newcommand{\FFT}{\mathrm{FFT}}
+\newcommand{\GDD}{\mathrm{GDD}}
+\newcommand{\TOD}{\mathrm{TOD}}
+\newcommand{\FWHM}{\mathrm{FWHM}}
+\newcommand{\SPM}{\mathrm{SPM}}
+\newcommand{\TL}{\mathrm{TL}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\sech}{\operatorname{sech}}
+
+\title{\textbf{FibDisp}\\
+\large Simulation of Ultrashort-Pulse Propagation in Gas-Filled Hollow-Core Fibers\\
+\large Theory, Numerical Model, Installation, and User Guide}
+\author{Davide Faccial\`a}
+\date{}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Purpose and Scope}
+% ============================================================================
+
+\texttt{FibDisp} simulates the propagation of an ultrashort laser pulse in a
+single-mode gas-filled hollow-core fiber or capillary. The propagation is
+calculated with a symmetric split-step Fourier method applied to a generalized
+nonlinear Schr\"odinger equation containing:
+
+\begin{itemize}
+    \item second-order dispersion, described by $\beta_2$;
+    \item third-order dispersion, described by $\beta_3$;
+    \item linear attenuation, described by $\alpha$;
+    \item Kerr self-phase modulation, described by the nonlinear coefficient
+    $\gamma$;
+    \item self-steepening, also called the optical-shock correction;
+    \item input quadratic and cubic spectral phase, specified by GDD and TOD.
+\end{itemize}
+
+The program also provides:
+
+\begin{itemize}
+    \item Gaussian, hyperbolic-secant, and super-Gaussian input pulses;
+    \item calculated gas/waveguide propagation coefficients and a Manual mode;
+    \item selectable propagation terms for diagnostic calculations;
+    \item two numerical solvers for the self-steepening nonlinear step;
+    \item temporal and spectral evolution maps along the fiber;
+    \item an optional fixed post-fiber GDD display in the main Results tab;
+    \item spectral-phase polynomial fitting with spectral-power weighting;
+    \item pure-GDD compressor analysis and numerical GDD optimization;
+    \item parameter sweeps over physical parameters and direct propagation
+    coefficients;
+    \item compressed and uncompressed pulse-power maps during parameter sweeps;
+    \item snapshots of the settings used for the current and most recent sweep;
+    \item numerical export in NPZ and CSV formats.
+\end{itemize}
+
+The graphical interface contains five tabs:
+
+\begin{enumerate}
+    \item \textbf{Settings};
+    \item \textbf{Start \& Results};
+    \item \textbf{Phase Analysis};
+    \item \textbf{GDD Compressor Design};
+    \item \textbf{Parameter Sweep}.
+\end{enumerate}
+
+The model is intended for studying Kerr-driven spectral broadening, linear
+dispersion, attenuation, self-steepening, spectral phase, and the degree to
+which an externally applied quadratic spectral phase can compress the pulse.
+
+% ============================================================================
+\section{Notation, Coordinates, and Units}
+% ============================================================================
+
+The principal quantities used throughout this document are defined here before
+they enter the propagation equations.
+
+\begin{longtable}{p{0.18\textwidth}p{0.72\textwidth}}
+\toprule
+\textbf{Symbol} & \textbf{Definition}\\
+\midrule
+$z$ & Propagation coordinate along the fiber, in metres.\\
+$L$ & Total fiber length, in metres. The GUI displays it in centimetres.\\
+$t$ & Laboratory time, in seconds.\\
+$T$ & Retarded time, $T=t-\beta_1 z$, in seconds.\\
+$U(z,T)$ & Dimensionless complex pulse envelope used by the numerical model.\\
+$A(z,T)$ & Power-normalized complex envelope, $A=\sqrt{P_0}\,U$, with units
+$\sqrt{\mathrm{W}}$.\\
+$P(z,T)$ & Instantaneous pulse power, $P=P_0|U|^2$, in watts.\\
+$P_0$ & Peak-power normalization associated with the transform-limited input
+shape, in watts.\\
+$E_{\mathrm{p}}$ & Pulse energy, $E_{\mathrm{p}}=\int P(T)\,\dd T$, in joules.\\
+$\lambda_0$ & Carrier wavelength, in metres; displayed in nanometres.\\
+$\nu_0=f_0$ & Carrier ordinary frequency, $\nu_0=c/\lambda_0$, in hertz.\\
+$\omega_0$ & Carrier angular frequency, $\omega_0=2\pi\nu_0$, in rad/s.\\
+$f_{\FFT}$ & Frequency coordinate generated by the centred NumPy FFT, in hertz.\\
+$\nu$ & Physical optical frequency, $\nu=\nu_0-f_{\FFT}$, in hertz.\\
+$\omega$ & Physical optical angular frequency, $\omega=2\pi\nu$, in rad/s.\\
+$\Omega$ & Physical angular-frequency detuning, $\Omega=\omega-\omega_0=-2\pi f_{\FFT}$.\\
+$\widetilde U$ & Fourier-domain envelope corresponding to $U(T)$.\\
+$\beta(\omega)$ & Modal propagation constant, in rad/m.\\
+$\beta_j$ & $j$th derivative of $\beta$ with respect to $\omega$ at $\omega_0$:
+$\beta_j=(\partial^j\beta/\partial\omega^j)_{\omega_0}$.\\
+$\beta_1$ & Inverse group velocity, in s/m.\\
+$\beta_2$ & Group-velocity dispersion coefficient, in s$^2$/m; displayed as fs$^2$/m.\\
+$\beta_3$ & Third-order dispersion coefficient, in s$^3$/m; displayed as fs$^3$/m.\\
+$\alpha$ & Power attenuation coefficient, in m$^{-1}$. A field amplitude therefore
+contains the factor $\exp(-\alpha z/2)$ when $\alpha$ is constant.\\
+$\gamma$ & Kerr nonlinear coefficient, in W$^{-1}$m$^{-1}$.\\
+$R$ & Capillary radius, in metres; displayed in micrometres.\\
+$A_{\mathrm{eff}}$ & Effective modal area, in m$^2$.\\
+$n_{\mathrm{gas}}$ & Linear refractive index of the filling gas.\\
+$n_2$ & Nonlinear Kerr refractive index, in m$^2$/W for a specified pressure.\\
+$p$ & Gas-pressure value entered in the GUI. Built-in coefficients use this value
+in the pressure-scaling relations of the gas model.\\
+\bottomrule
+\end{longtable}
+
+The speed of light in vacuum is
+
+\begin{equation}
+ c=299792458\ \mathrm{m/s}.
+\end{equation}
+
+\subsection{Fourier convention}
+
+The centred numerical transform corresponds to the continuous convention
+
+\begin{equation}
+\widetilde U(f_{\FFT})
+=
+\int_{-\infty}^{+\infty}
+U(T)e^{-i2\pi f_{\FFT}T}\,\dd T.
+\end{equation}
+
+Consequently,
+
+\begin{equation}
+\frac{\partial}{\partial T}
+\longleftrightarrow
+i2\pi f_{\FFT},
+\end{equation}
+
+while the physical optical detuning used in plots and phase formulas is
+
+\begin{equation}
+\boxed{
+\Omega=-2\pi f_{\FFT}.
+}
+\end{equation}
+
+The physical optical-frequency axis shown by the GUI is
+
+\begin{equation}
+\boxed{
+\nu=\nu_0-f_{\FFT}.
+}
+\end{equation}
+
+When the spectral axis is displayed as wavelength,
+
+\begin{equation}
+\lambda=\frac{c}{\nu},
+\end{equation}
+
+and only points with positive physical frequency are used.
+
+% ============================================================================
+\section{Physical Background}
+% ============================================================================
+
+\subsection{Kerr refractive index and self-phase modulation}
+
+For an instantaneous Kerr response, the refractive index is written
+
+\begin{equation}
+ n=n_0+n_2 I,
+\end{equation}
+
+where $n_0$ is the linear refractive index, $n_2$ is the Kerr nonlinear index,
+and $I$ is optical intensity in W/m$^2$. For a guided mode with effective area
+$A_{\mathrm{eff}}$, intensity and power are related approximately by
+
+\begin{equation}
+ I(T)\simeq\frac{P(T)}{A_{\mathrm{eff}}}.
+\end{equation}
+
+The nonlinear propagation constant can be expressed with the nonlinear
+coefficient
+
+\begin{equation}
+\boxed{
+\gamma=\frac{n_2\omega_0}{cA_{\mathrm{eff}}}.
+}
+\end{equation}
+
+If depletion and loss are neglected over a short distance $z$, the Kerr phase
+is approximately
+
+\begin{equation}
+\phi_{\mathrm{NL}}(T,z)\simeq\gamma P(T)z.
+\end{equation}
+
+The instantaneous optical-frequency shift generated by this temporal phase is
+
+\begin{equation}
+\boxed{
+\Delta\omega(T)
+=-\frac{\partial\phi_{\mathrm{NL}}}{\partial T}.
+}
+\end{equation}
+
+The same relation in ordinary frequency is
+
+\begin{equation}
+\boxed{
+\Delta\nu(T)
+=-\frac{1}{2\pi}
+\frac{\partial\phi_{\mathrm{NL}}}{\partial T}.
+}
+\end{equation}
+
+The leading and trailing edges of a smooth pulse therefore acquire opposite
+frequency shifts, producing self-phase-modulation spectral broadening.
+
+A commonly used measure of accumulated nonlinear phase is the $B$-integral,
+
+\begin{equation}
+ B=\int_0^L\gamma P_{\mathrm{peak}}(z)\,\dd z,
+\end{equation}
+
+where $P_{\mathrm{peak}}(z)$ is the maximum instantaneous power at position $z$.
+The $B$-integral is dimensionless and is expressed in radians of nonlinear phase.
+
+\subsection{Linear dispersion}
+
+The modal propagation constant is expanded around $\omega_0$ as
+
+\begin{equation}
+\beta(\omega_0+\Omega)
+=
+\beta_0+\beta_1\Omega
++\frac{\beta_2}{2}\Omega^2
++\frac{\beta_3}{6}\Omega^3+\cdots,
+\end{equation}
+
+where
+
+\begin{equation}
+\beta_0=\beta(\omega_0),
+\qquad
+\beta_1=\left.\frac{\partial\beta}{\partial\omega}\right|_{\omega_0},
+\qquad
+\beta_2=\left.\frac{\partial^2\beta}{\partial\omega^2}\right|_{\omega_0},
+\qquad
+\beta_3=\left.\frac{\partial^3\beta}{\partial\omega^3}\right|_{\omega_0}.
+\end{equation}
+
+The carrier phase associated with $\beta_0$ is not part of the envelope dynamics.
+The first-order term is removed by using retarded time $T=t-\beta_1z$.
+FibDisp therefore propagates the residual second- and third-order dispersion
+through the scalar coefficients $\beta_2$ and $\beta_3$ evaluated at the carrier.
+
+\subsection{Self-steepening}
+
+For a sufficiently broadband pulse, the frequency dependence of the nonlinear
+coupling cannot be treated as exactly constant. To first order,
+
+\begin{equation}
+\gamma(\omega)
+\simeq
+\gamma_0\left(1+\frac{\Omega}{\omega_0}\right),
+\end{equation}
+
+where $\gamma_0=\gamma(\omega_0)$. The nonlinear spectral term is therefore
+
+\begin{equation}
+ i\gamma_0
+ \left(1+\frac{\Omega}{\omega_0}\right)
+ \widetilde{|A|^2A}.
+\end{equation}
+
+Using the Fourier convention defined above, this becomes in retarded time
+
+\begin{equation}
+\boxed{
+ i\gamma_0|A|^2A
+ -\frac{\gamma_0}{\omega_0}
+ \frac{\partial}{\partial T}\left(|A|^2A\right).
+}
+\end{equation}
+
+The first term is SPM. The derivative term is self-steepening. For positive
+$n_2$, the nonlinear group-delay correction is larger in the high-power part
+of the pulse, producing an intensity-dependent temporal delay and an optical
+shock tendency on the trailing side of the pulse.
+
+\subsection{Why spectral broadening can enable compression}
+
+Let the fiber output spectrum be
+
+\begin{equation}
+\widetilde U_{\mathrm{out}}(\Omega)
+=
+\left|\widetilde U_{\mathrm{out}}(\Omega)\right|
+ e^{i\phi_{\mathrm{out}}(\Omega)},
+\end{equation}
+
+where $\phi_{\mathrm{out}}(\Omega)$ is the output spectral phase. Spectral
+broadening increases the bandwidth and can therefore support a shorter
+transform-limited pulse. The actual output is usually longer because
+$\phi_{\mathrm{out}}$ is not flat.
+
+An external phase-only compressor with transfer function
+
+\begin{equation}
+H(\Omega)=e^{i\phi_{\mathrm{comp}}(\Omega)}
+\end{equation}
+
+produces
+
+\begin{equation}
+U_{\mathrm{comp}}(T)
+=
+\mathcal F^{-1}
+\left\{
+\widetilde U_{\mathrm{out}}(\Omega)H(\Omega)
+\right\}.
+\end{equation}
+
+A pure-GDD compressor uses
+
+\begin{equation}
+\boxed{
+\phi_{\mathrm{comp}}(\Omega)=\frac{G}{2}\Omega^2,
+}
+\end{equation}
+
+where $G$ is the applied GDD in fs$^2$ when $\Omega$ is expressed in rad/fs.
+A value $G$ that has the opposite sign to the dominant quadratic part of the
+output phase can reduce the pulse duration.
+
+% ============================================================================
+\section{Input Pulse Model}
+% ============================================================================
+
+The user specifies the transform-limited intensity FWHM
+$\tau_{\FWHM}$, the pulse energy $E_{\mathrm p}$, and one of three temporal
+shapes. A shape-dependent characteristic time $T_0$ is calculated so that the
+requested $\tau_{\FWHM}$ is reproduced.
+
+\subsection{Gaussian pulse}
+
+The transform-limited power is
+
+\begin{equation}
+P_{\TL}(T)=P_0\exp\left[-\left(\frac{T}{T_0}\right)^2\right],
+\end{equation}
+
+and the field envelope is
+
+\begin{equation}
+U_{\TL}(T)=\exp\left[-\frac{T^2}{2T_0^2}\right].
+\end{equation}
+
+FibDisp uses
+
+\begin{equation}
+\boxed{
+T_0=\frac{\tau_{\FWHM}}{1.665},
+}
+\end{equation}
+
+where $1.665$ is the numerical FWHM factor used by the code. The energy
+normalization is
+
+\begin{equation}
+\boxed{
+P_0=\frac{E_{\mathrm p}}{\sqrt{\pi}T_0}.
+}
+\end{equation}
+
+\subsection{Hyperbolic-secant pulse}
+
+The transform-limited power is
+
+\begin{equation}
+P_{\TL}(T)=P_0\sech^2\left(\frac{T}{T_0}\right),
+\end{equation}
+
+with field
+
+\begin{equation}
+U_{\TL}(T)=\sech\left(\frac{T}{T_0}\right).
+\end{equation}
+
+The intensity FWHM gives
+
+\begin{equation}
+\boxed{
+T_0=
+\frac{\tau_{\FWHM}}
+{2\operatorname{acosh}(\sqrt{2})},
+}
+\end{equation}
+
+and, because $\int_{-\infty}^{+\infty}\sech^2(T/T_0)\,\dd T=2T_0$,
+
+\begin{equation}
+\boxed{
+P_0=\frac{E_{\mathrm p}}{2T_0}.
+}
+\end{equation}
+
+\subsection{Super-Gaussian pulse}
+
+The transform-limited power is
+
+\begin{equation}
+P_{\TL}(T)
+=P_0\exp\left[-\left(\frac{T}{T_0}\right)^4\right],
+\end{equation}
+
+with field
+
+\begin{equation}
+U_{\TL}(T)
+=\exp\left[-\frac{1}{2}\left(\frac{T}{T_0}\right)^4\right].
+\end{equation}
+
+The characteristic time is
+
+\begin{equation}
+\boxed{
+T_0=\frac{\tau_{\FWHM}}{2(\ln2)^{1/4}}.
+}
+\end{equation}
+
+Using
+
+\begin{equation}
+\int_{-\infty}^{+\infty}
+\exp[-(T/T_0)^4]\,\dd T
+=2T_0\Gamma(5/4),
+\end{equation}
+
+where $\Gamma$ is the gamma function, the peak-power normalization is
+
+\begin{equation}
+\boxed{
+P_0=\frac{E_{\mathrm p}}{2T_0\Gamma(5/4)}.
+}
+\end{equation}
+
+\subsection{Input GDD and TOD}
+
+After constructing the transform-limited field, FibDisp applies the requested
+input spectral phase
+
+\begin{equation}
+\boxed{
+\phi_{\mathrm{in}}(\Omega)
+=
+\frac{\GDD_{\mathrm{in}}}{2}\Omega^2
++
+\frac{\TOD_{\mathrm{in}}}{6}\Omega^3.
+}
+\end{equation}
+
+Here $\GDD_{\mathrm{in}}$ is in fs$^2$, $\TOD_{\mathrm{in}}$ is in fs$^3$,
+and $\Omega$ is expressed in rad/fs for the numerical phase evaluation. The
+chirped input spectrum is
+
+\begin{equation}
+\widetilde U_{\mathrm{in}}(\Omega)
+=
+\widetilde U_{\TL}(\Omega)
+\exp[i\phi_{\mathrm{in}}(\Omega)].
+\end{equation}
+
+Because this transfer function has unit magnitude, input GDD and TOD change the
+phase and temporal shape without changing the pulse energy or spectral power.
+
+% ============================================================================
+\section{Gas and Hollow-Capillary Model}
+% ============================================================================
+
+\subsection{Built-in gases}
+
+The built-in gas choices are Helium, Neon, Argon, Krypton, Xenon, and Nitrogen.
+For these gases the program calculates $\beta_2$, $\beta_3$, a
+frequency-dependent capillary loss $\alpha(\nu)$, and the nonlinear coefficient
+$\gamma$ from the selected gas, pressure, wavelength, and capillary radius.
+
+The effective modal area is approximated by
+
+\begin{equation}
+\boxed{
+A_{\mathrm{eff}}=0.4766\,\pi R^2.
+}
+\end{equation}
+
+\subsection{Gas refractive index and pressure scaling}
+
+For each gas a wavelength-dependent reference refractive-index model is used.
+The pressure dependence is applied through a Lorentz--Lorenz form. If
+$n_{\mathrm{ref}}(\lambda)$ is the reference index and
+
+\begin{equation}
+\chi(\lambda,p)
+=
+\frac{n_{\mathrm{ref}}^2(\lambda)-1}
+     {n_{\mathrm{ref}}^2(\lambda)+2}\,p,
+\end{equation}
+
+then the gas index used by the code is
+
+\begin{equation}
+\boxed{
+n_{\mathrm{gas}}(\lambda,p)
+=
+\sqrt{\frac{1+2\chi}{1-\chi}}.
+}
+\end{equation}
+
+The pressure variable $p$ is the numerical pressure value entered in the GUI.
+The nonlinear index is also scaled linearly with this pressure value in the
+built-in model.
+
+\subsection{Large-core capillary approximation}
+
+The fundamental capillary-mode transverse eigenvalue is
+
+\begin{equation}
+ u_{11}\simeq2.405.
+\end{equation}
+
+The exact ideal-capillary propagation constant can be written
+
+\begin{equation}
+\beta(\omega)
+=
+\sqrt{
+ n_{\mathrm{gas}}^2(\omega)\frac{\omega^2}{c^2}
+ -\frac{u_{11}^2}{R^2}
+}.
+\end{equation}
+
+FibDisp evaluates dispersion through the corresponding large-core expansion of
+the effective index,
+
+\begin{equation}
+\boxed{
+n_{\mathrm{eff}}(\lambda)
+\simeq
+n_{\mathrm{gas}}(\lambda)
+\left[
+1-
+\frac{1}{2}
+\left(
+\frac{u_{11}\lambda}
+{2\pi R n_{\mathrm{gas}}(\lambda)}
+\right)^2
+\right].
+}
+\end{equation}
+
+The wavelength derivatives of $n_{\mathrm{eff}}$ are evaluated numerically in
+a local wavelength interval around $\lambda_0$. The resulting carrier
+coefficients are
+
+\begin{equation}
+\boxed{
+\beta_2
+=
+\frac{\lambda_0^3}{2\pi c^2}
+\left.
+\frac{\dd^2 n_{\mathrm{eff}}}{\dd\lambda^2}
+\right|_{\lambda_0},
+}
+\end{equation}
+
+and
+
+\begin{equation}
+\boxed{
+\beta_3
+=
+-\frac{\lambda_0^4}{4\pi^2c^3}
+\left[
+3\frac{\dd^2 n_{\mathrm{eff}}}{\dd\lambda^2}
++
+\lambda_0\frac{\dd^3 n_{\mathrm{eff}}}{\dd\lambda^3}
+\right]_{\lambda_0}.
+}
+\end{equation}
+
+Thus the displayed $\beta_2$ and $\beta_3$ already contain both gas and
+waveguide contributions. During propagation they are used as scalar coefficients
+in the Taylor expansion around $\omega_0$; the full $\beta(\omega)$ is not
+propagated directly.
+
+\subsection{Nonlinear coefficient}
+
+For the built-in gases the nonlinear coefficient is
+
+\begin{equation}
+\boxed{
+\gamma
+=
+\frac{n_{2,1}\,p\,\omega_0}
+{cA_{\mathrm{eff}}},
+}
+\end{equation}
+
+where $n_{2,1}$ is the gas nonlinear-index coefficient stored by the model per
+unit pressure and $p$ is the pressure value entered in the GUI. Increasing
+pressure therefore increases the Kerr coupling approximately linearly while it
+also changes the gas contribution to dispersion.
+
+\subsection{Capillary attenuation}
+
+For built-in gases the attenuation is frequency dependent. Let
+
+\begin{equation}
+q=\frac{n_v}{n_{\mathrm{gas}}(\lambda_0,p)},
+\end{equation}
+
+where $n_v=1.45356$ is the wall-index value used by the capillary-loss model.
+At physical optical frequency $\nu$, the attenuation used in the spectral
+operator is
+
+\begin{equation}
+\boxed{
+\alpha(\nu)
+=
+\left(\frac{u_{11}c}{2\pi\nu}\right)^2
+\frac{1}{R^3}
+\frac{q^2+1}{\sqrt{q^2-1}}.
+}
+\end{equation}
+
+The Settings tab displays $\alpha(\nu_0)$, the value at the carrier, while the
+propagation uses the frequency-dependent array $\alpha(\nu)$.
+
+\subsection{Manual propagation coefficients}
+
+Manual mode bypasses the built-in coefficient calculation. The user directly
+specifies
+
+\begin{equation}
+\beta_2\ [\mathrm{fs^2/m}],\qquad
+\beta_3\ [\mathrm{fs^3/m}],\qquad
+\alpha\ [\mathrm{m^{-1}}],\qquad
+\gamma\ [\mathrm{W^{-1}m^{-1}}].
+\end{equation}
+
+In Manual mode $\alpha$ is constant across the simulated spectrum. The direct
+coefficients are otherwise used in the same propagation equation as the
+built-in gas coefficients.
+
+% ============================================================================
+\section{Propagation Equation}
+% ============================================================================
+
+\subsection{Linear spectral operator}
+
+With retarded time $T=t-\beta_1z$ and physical detuning
+$\Omega=\omega-\omega_0$, the linear part of the implemented model is
+
+\begin{equation}
+\boxed{
+\left.
+\frac{\partial\widetilde U}{\partial z}
+\right|_{\mathrm L}
+=
+D(\Omega)\widetilde U,
+}
+\end{equation}
+
+with
+
+\begin{equation}
+\boxed{
+D(\Omega)
+=
+-\frac{\alpha(\omega_0+\Omega)}{2}
++i\frac{\beta_2}{2}\Omega^2
++i\frac{\beta_3}{6}\Omega^3.
+}
+\end{equation}
+
+For Manual mode, $\alpha$ is constant. For a built-in gas,
+$\alpha(\omega_0+\Omega)$ is the capillary-loss function described above.
+
+\subsection{Nonlinear envelope equation}
+
+The numerical envelope is normalized according to
+
+\begin{equation}
+A(z,T)=\sqrt{P_0}\,U(z,T),
+\qquad
+P(z,T)=P_0|U(z,T)|^2.
+\end{equation}
+
+The nonlinear part of the propagation equation is
+
+\begin{equation}
+\boxed{
+\left.
+\frac{\partial U}{\partial z}
+\right|_{\mathrm{NL}}
+=
+ i\gamma P_0|U|^2U
+-
+\frac{\gamma P_0}{\omega_0}
+\frac{\partial}{\partial T}\left(|U|^2U\right).
+}
+\end{equation}
+
+Combining linear and nonlinear contributions gives the exact form used by the
+split-step implementation:
+
+\begin{equation}
+\boxed{
+\frac{\partial U}{\partial z}
+=
+\mathcal F^{-1}
+\left\{
+D(\Omega)\widetilde U
+\right\}
++
+ i\gamma P_0|U|^2U
+-
+\frac{\gamma P_0}{\omega_0}
+\frac{\partial}{\partial T}\left(|U|^2U\right).
+}
+\label{eq:gnlse}
+\end{equation}
+
+If $\alpha$ is constant, Eq.~\eqref{eq:gnlse} can equivalently be written in
+time-domain differential form as
+
+\begin{align}
+\frac{\partial U}{\partial z}
+={}&
+-\frac{\alpha}{2}U
+-i\frac{\beta_2}{2}
+\frac{\partial^2U}{\partial T^2}
++\frac{\beta_3}{6}
+\frac{\partial^3U}{\partial T^3}
+\nonumber\\
+&+
+ i\gamma P_0|U|^2U
+-
+\frac{\gamma P_0}{\omega_0}
+\frac{\partial}{\partial T}\left(|U|^2U\right).
+\end{align}
+
+The physical roles are:
+
+\begin{center}
+\begin{tabular}{p{0.34\textwidth}p{0.52\textwidth}}
+\toprule
+\textbf{Contribution} & \textbf{Physical effect}\\
+\midrule
+$-\alpha U/2$ & Linear field attenuation when $\alpha$ is constant.\\[0.4em]
+$-i(\beta_2/2)\partial^2U/\partial T^2$ & Group-velocity dispersion.\\[0.4em]
+$(\beta_3/6)\partial^3U/\partial T^3$ & Third-order dispersion.\\[0.4em]
+$i\gamma P_0|U|^2U$ & Kerr self-phase modulation.\\[0.4em]
+$-(\gamma P_0/\omega_0)\partial_T(|U|^2U)$ & Self-steepening / optical-shock term.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each contribution can be enabled or disabled in the Start \& Results tab.
+The self-steepening term is physically part of the broadband Kerr response;
+enabling it without SPM is mainly useful as a numerical diagnostic.
+
+% ============================================================================
+\section{Numerical Self-Steepening Solvers}
+% ============================================================================
+
+FibDisp offers two numerical treatments of the nonlinear substep when
+self-steepening is enabled.
+
+\subsection{Fast exponential solver}
+
+Define
+
+\begin{equation}
+Q(U)=\frac{\partial}{\partial T}\left(|U|^2U\right).
+\end{equation}
+
+The nonlinear equation can formally be grouped as
+
+\begin{equation}
+\left.
+\frac{\partial U}{\partial z}
+\right|_{\mathrm{NL}}
+=
+\left[
+ i\gamma P_0|U|^2
+-
+\frac{\gamma P_0}{\omega_0}
+\frac{Q(U)}{U}
+\right]U.
+\end{equation}
+
+The fast solver freezes the nonlinear coefficients over one global SSFM step
+$\Delta z$ and applies multiplicative exponentials. The shock ratio is
+regularized as
+
+\begin{equation}
+\frac{Q(U)}{U+\epsilon},
+\qquad
+\epsilon=0.002,
+\end{equation}
+
+where $U$ is dimensionless and has a characteristic peak amplitude of order
+unity before strong reshaping. The temporal derivative is evaluated
+spectrally. This method is computationally efficient and is suitable when the
+nonlinear evolution is adequately resolved by the global propagation step.
+
+\subsection{Accurate adaptive RK4 solver}
+
+The accurate solver integrates the nonlinear right-hand side directly,
+
+\begin{equation}
+F(U)
+=
+ i\gamma P_0|U|^2U
+-
+\frac{\gamma P_0}{\omega_0}
+\frac{\partial}{\partial T}\left(|U|^2U\right),
+\end{equation}
+
+with classical fourth-order Runge--Kutta stages. The derivative
+$\partial_T(|U|^2U)$ is recomputed at every RK4 stage, so no division by
+$U+\epsilon$ is required.
+
+Each global nonlinear interval $\Delta z$ is automatically divided into
+$N_{\mathrm{sub}}$ internal steps. Let
+
+\begin{equation}
+I_U=\max_T |U(T)|^2,
+\qquad
+g=|\gamma P_0|I_U.
+\end{equation}
+
+The substep count is selected so that the estimated nonlinear phase increment
+per internal step does not exceed approximately $0.20$ rad and the estimated
+self-steepening Courant number does not exceed approximately $0.25$:
+
+\begin{equation}
+\frac{g\Delta z}{N_{\mathrm{sub}}}\lesssim0.20,
+\end{equation}
+
+\begin{equation}
+\frac{3g\Delta z}
+{\omega_0\Delta T\,N_{\mathrm{sub}}}
+\lesssim0.25,
+\end{equation}
+
+where $\Delta T$ is the temporal grid spacing. The factor $3g/\omega_0$ is an
+estimate of the intensity-characteristic speed associated with the reduced
+self-steepening equation and is used only as a numerical step-size criterion.
+
+The accurate mode is slower but is substantially more robust when the nonlinear
+coefficient, pulse peak power, or optical-shock strength is large. If more than
+5000 internal RK4 steps would be required inside one global SSFM interval,
+FibDisp stops the calculation and asks for a finer propagation or temporal grid.
+
+No time integrator can compensate for an unresolved temporal shock or a
+spectrum reaching the FFT boundaries. Strong self-steepening calculations
+should therefore also be checked for convergence with respect to $N_Z$, FFT
+size, and temporal window.
+
+% ============================================================================
+\section{Split-Step Fourier Propagation}
+% ============================================================================
+
+The full propagation uses a symmetric split-step Fourier method. Let
+$\widehat D$ denote the linear propagation operator and $\widehat N$ the
+nonlinear operator. Over one interval $\Delta z$,
+
+\begin{equation}
+U(z+\Delta z)
+\simeq
+ e^{\widehat D\Delta z/2}
+ e^{\widehat N\Delta z}
+ e^{\widehat D\Delta z/2}
+ U(z).
+\end{equation}
+
+The numerical sequence is:
+
+\begin{enumerate}
+    \item Fourier transform the temporal field;
+    \item multiply the spectrum by $\exp[D(\Omega)\Delta z/2]$;
+    \item inverse transform to retarded time;
+    \item apply the nonlinear substep with the selected self-steepening solver;
+    \item Fourier transform again;
+    \item apply the second factor $\exp[D(\Omega)\Delta z/2]$;
+    \item inverse transform to obtain the field at the next propagation point.
+\end{enumerate}
+
+If $N_Z$ is the number of points on the propagation axis, then there are
+$N_Z-1$ intervals and
+
+\begin{equation}
+\boxed{
+\Delta z=\frac{L}{N_Z-1}.
+}
+\end{equation}
+
+The first point is $z=0$ and the final point is $z=L$.
+
+% ============================================================================
+\section{Temporal and Spectral Numerical Grids}
+% ============================================================================
+
+The FFT contains
+
+\begin{equation}
+\boxed{N=2^n}
+\end{equation}
+
+samples, where $n$ is the GUI value \texttt{Points time/freq 2\^{}n}.
+
+Let $m$ denote the GUI value \texttt{ratio time/FWHM m}. In the implemented
+grid construction, $m$ multiplies the shape-dependent characteristic time
+$T_0$. The periodic temporal interval is
+
+\begin{equation}
+\boxed{
+-mT_0\le T<mT_0,
+}
+\end{equation}
+
+with total duration
+
+\begin{equation}
+T_{\mathrm{win}}=2mT_0.
+\end{equation}
+
+The temporal spacing is
+
+\begin{equation}
+\boxed{
+\Delta T=\frac{2mT_0}{N},
+}
+\end{equation}
+
+and the FFT-frequency spacing is
+
+\begin{equation}
+\boxed{
+\Delta f=\frac{1}{N\Delta T}
+=\frac{1}{T_{\mathrm{win}}}.
+}
+\end{equation}
+
+At fixed $m$, increasing $n$ increases the temporal resolution and the
+available Nyquist bandwidth. At fixed $n$, increasing $m$ enlarges the temporal
+window but also increases $\Delta T$; strong broadening can therefore require
+increasing both $m$ and $n$.
+
+The \texttt{Saved z samples} value controls only how many propagation snapshots
+are retained for the temporal/spectral evolution map. It does not change
+$N_Z$, $\Delta z$, or the propagation physics.
+
+% ============================================================================
+\section{Computational-Boundary Warnings}
+% ============================================================================
+
+During propagation, FibDisp monitors the first and last samples of the temporal
+and spectral fields. A warning is generated when an edge amplitude exceeds
+$10^{-3}$ of the corresponding initial peak field amplitude. In symbols, a
+frequency-boundary warning is triggered when
+
+\begin{equation}
+\frac{|\widetilde U_{\mathrm{edge}}|}
+     {\max|\widetilde U_{\mathrm{in}}|}>10^{-3},
+\end{equation}
+
+and the analogous test is applied in time.
+
+A boundary warning indicates that periodic FFT wrap-around may influence the
+solution. The usual remedies are:
+
+\begin{itemize}
+    \item increase $n$ when the spectrum approaches the frequency boundaries;
+    \item increase $m$ when the temporal pulse approaches the time boundaries;
+    \item increase both when a larger temporal window is needed without losing
+    temporal resolution.
+\end{itemize}
+
+Parameter sweeps perform the same check for every sweep point and report the
+boundary type and approximate propagation position at which the condition was
+first detected.
+
+% ============================================================================
+\section{Derived Quantities}
+% ============================================================================
+
+\subsection{Output energy and transmission}
+
+The calculated spectral power density is denoted $S(\nu)$ and has units W/Hz.
+The output energy is
+
+\begin{equation}
+\boxed{
+E_{\mathrm{out}}
+=\int S_{\mathrm{out}}(\nu)\,\dd\nu.
+}
+\end{equation}
+
+The transmission percentage is
+
+\begin{equation}
+\boxed{
+\eta
+=100\frac{E_{\mathrm{out}}}{E_{\mathrm{in}}},
+}
+\end{equation}
+
+where $E_{\mathrm{in}}$ is the input pulse energy.
+
+\subsection{Spectral broadening factor}
+
+For a spectral density $S(f)$, define the power-weighted mean frequency
+
+\begin{equation}
+\bar f
+=
+\frac{\int fS(f)\,\dd f}{\int S(f)\,\dd f}
+\end{equation}
+
+and standard deviation
+
+\begin{equation}
+\sigma_f
+=
+\sqrt{
+\frac{\int(f-\bar f)^2S(f)\,\dd f}{\int S(f)\,\dd f}
+}.
+\end{equation}
+
+FibDisp reports the dimensionless broadening factor
+
+\begin{equation}
+\boxed{
+B=\frac{\sigma_{f,\mathrm{out}}}{\sigma_{f,\mathrm{in}}}.
+}
+\end{equation}
+
+The sign reversal between $f_{\FFT}$ and physical detuning does not change this
+standard-deviation ratio.
+
+\subsection{Transform-limited output pulse}
+
+The transform-limited field associated with the output spectral amplitude is
+
+\begin{equation}
+\boxed{
+U_{\TL}(T)
+=\mathcal F^{-1}
+\left\{
+|\widetilde U_{\mathrm{out}}(\Omega)|
+\right\}.
+}
+\end{equation}
+
+Its temporal FWHM is the duration obtainable if the complete output spectral
+phase could be removed while preserving the spectral amplitude.
+
+\subsection{Temporal instantaneous-frequency shift}
+
+Let
+
+\begin{equation}
+\phi_T(T)=\arg U(T)
+\end{equation}
+
+be the unwrapped temporal envelope phase. The displayed chirp is the ordinary
+frequency shift
+
+\begin{equation}
+\boxed{
+\Delta\nu(T)
+=-\frac{1}{2\pi}
+\frac{\dd\phi_T}{\dd T}.
+}
+\end{equation}
+
+FibDisp stores this quantity in hertz and displays it in terahertz.
+
+\subsection{Spectral group delay}
+
+Let $\phi(\omega)$ be the unwrapped spectral phase. The group delay is
+
+\begin{equation}
+\boxed{
+GD(\omega)=\frac{\dd\phi}{\dd\omega}.
+}
+\end{equation}
+
+It is stored in seconds and displayed in femtoseconds. With the internal FFT
+coordinate, the same derivative is evaluated as
+
+\begin{equation}
+GD
+=-\frac{1}{2\pi}
+\frac{\dd\phi}{\dd f_{\FFT}}.
+\end{equation}
+
+% ============================================================================
+\section{Tab 1: Settings}
+% ============================================================================
+
+The Settings tab defines the baseline parameters used for a propagation or a
+parameter sweep.
+
+\subsection{Gas and fiber parameters}
+
+\begin{longtable}{p{0.29\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{GUI field} & \textbf{Meaning}\\
+\midrule
+Select gas & Built-in gas model or Manual direct-coefficient mode.\\
+Pressure (atm) & Pressure value $p$ used by the built-in gas model.\\
+Fiber length (cm) & Total propagation distance $L$.\\
+Radius ($\mu$m) & Capillary radius $R$.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Pulse parameters}
+
+\begin{longtable}{p{0.29\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{GUI field} & \textbf{Meaning}\\
+\midrule
+Pulse shape & Gaussian, Sech, or Super-Gaussian transform-limited intensity profile.\\
+Energy (mJ) & Input pulse energy $E_{\mathrm p}$.\\
+TL FWHM (fs) & Transform-limited intensity FWHM $\tau_{\FWHM}$.\\
+Wavelength (nm) & Carrier wavelength $\lambda_0$.\\
+GDD (fs$^2$) & Input quadratic spectral-phase coefficient $\GDD_{\mathrm{in}}$.\\
+TOD (fs$^3$) & Input cubic spectral-phase coefficient $\TOD_{\mathrm{in}}$.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Simulation parameters}
+
+\begin{longtable}{p{0.29\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{GUI field} & \textbf{Meaning}\\
+\midrule
+Points prop. axis z & Number $N_Z$ of propagation-axis samples.\\
+Points time/freq $2^n$ & FFT sample count $N=2^n$.\\
+ratio time/FWHM $m$ & Numerical half-window factor; the implemented half-width is $mT_0$.\\
+\bottomrule
+\end{longtable}
+
+\subsection{Propagation coefficients}
+
+For a built-in gas, the tab displays $\beta_2$, $\beta_3$, $\alpha(\nu_0)$,
+and $\gamma$. The values update when gas, pressure, wavelength, or radius is
+changed. The coefficient fields are read-only in this mode.
+
+In Manual mode the four fields become editable. The value entered for $\alpha$
+is then used as a frequency-independent loss coefficient.
+
+\subsection{Confirm (preview input)}
+
+The preview button generates the input pulse using the selected shape, energy,
+FWHM, wavelength, GDD, TOD, and numerical grid. It displays temporal power and
+phase together with spectral power density and phase before fiber propagation.
+
+% ============================================================================
+\section{Tab 2: Start \& Results}
+% ============================================================================
+
+This tab performs the propagation and displays the principal output diagnostics.
+
+\subsection{Scalar results}
+
+The reported scalar values are:
+
+\begin{itemize}
+    \item output pulse energy $E_{\mathrm{out}}$;
+    \item transmission $\eta$;
+    \item spectral broadening factor $B$;
+    \item transform-limited output FWHM.
+\end{itemize}
+
+\subsection{Selectable propagation terms}
+
+The following terms can be independently enabled or disabled:
+
+\begin{itemize}
+    \item SPM;
+    \item self-steepening;
+    \item GVD ($\beta_2$);
+    \item TOD ($\beta_3$);
+    \item loss ($\alpha$).
+\end{itemize}
+
+The self-steepening solver can be selected as either \textbf{Fast
+(exponential)} or \textbf{Accurate RK4 (adaptive)}. The solver choice has no
+effect when self-steepening is disabled.
+
+\subsection{Raw and fixed-GDD result display}
+
+The \textbf{Result display} control has two modes:
+
+\begin{description}
+    \item[Raw output] displays the complex field directly at the fiber exit.
+    \item[Fixed GDD] applies a user-selected external GDD $G$ to the final
+    output spectrum and reconstructs the corresponding temporal field.
+\end{description}
+
+The fixed GDD is phase-only post-processing:
+
+\begin{equation}
+\widetilde U_G(\Omega)
+=
+\widetilde U_{\mathrm{out}}(\Omega)
+\exp\left(i\frac{G}{2}\Omega^2\right).
+\end{equation}
+
+It does not modify the fiber propagation, the saved $z$ evolution, the raw
+simulation result used by Phase Analysis, or the GDD Compressor Design tab.
+
+For a fixed-GDD temporal display, the automatic x-range is obtained from the
+first and last samples above 1\% of the compensated pulse peak, with additional
+padding equal to half of that significant span on each side when the numerical
+window permits. This rule affects only the displayed axis limits; it does not
+modify the temporal field or the computational time grid.
+
+\subsection{Result plots}
+
+The $2\times3$ layout contains:
+
+\begin{enumerate}
+    \item pulse power and temporal phase;
+    \item spectral power density and spectral phase;
+    \item transform-limited pulse power;
+    \item instantaneous-frequency shift (chirp);
+    \item spectral group delay;
+    \item propagation evolution map.
+\end{enumerate}
+
+The spectral axis can be displayed in THz or nm. The Matplotlib navigation
+toolbar provides zoom, pan, home, and save functions and remains outside the
+resizable plot area so that it stays accessible when the window height is
+reduced.
+
+\subsection{Spectral or temporal evolution along the fiber}
+
+The lower-right panel can display either
+
+\begin{equation}
+S(\nu,z)
+\end{equation}
+
+or
+
+\begin{equation}
+P(T,z),
+\end{equation}
+
+where $S$ is spectral power density and $P$ is temporal power. Both maps use the
+same saved propagation positions. The number of stored positions is controlled
+by \texttt{Saved z samples}.
+
+Both maps always represent the field \emph{inside the fiber before any external
+fixed-GDD compensation}. An external compressor is applied only after the final
+propagation position and therefore has no physical meaning at intermediate $z$.
+
+\subsection{Saving a single simulation}
+
+A simulation can be saved as NPZ or CSV. The NPZ archive retains the numerical
+arrays, including complex temporal and spectral fields. CSV export writes the
+main table and companion files for the propagation maps.
+
+The saved quantities include:
+
+\begin{itemize}
+    \item temporal grid and FFT-frequency grid;
+    \item input and output complex fields;
+    \item input and output temporal power;
+    \item input and output spectral power density;
+    \item temporal and spectral phase;
+    \item instantaneous-frequency shift;
+    \item spectral group delay;
+    \item transform-limited pulse;
+    \item spectral evolution $S(\nu,z)$;
+    \item temporal evolution $P(T,z)$;
+    \item physical and numerical settings associated with the run.
+\end{itemize}
+
+% ============================================================================
+\section{Tab 3: Phase Analysis}
+% ============================================================================
+
+The Phase Analysis tab analyzes the \textbf{raw fiber output}. The optional
+fixed GDD selected only for the Start \& Results display is not included in this
+analysis.
+
+\subsection{Polynomial convention}
+
+The fit variable is physical angular-frequency detuning in rad/fs. The fitted
+phase is written
+
+\begin{equation}
+\boxed{
+\phi_{\mathrm{fit}}(\Omega)
+=
+p_0
++p_1\Omega
++\frac{p_2}{2!}\Omega^2
++\frac{p_3}{3!}\Omega^3
++\cdots.
+}
+\end{equation}
+
+The coefficients therefore have direct dispersion units:
+
+\begin{align}
+p_0 &\quad [\mathrm{rad}],\\
+p_1 &\quad [\mathrm{fs}],\\
+p_2 &\quad [\mathrm{fs^2}],\\
+p_3 &\quad [\mathrm{fs^3}].
+\end{align}
+
+In particular, $p_1$ is a fitted group-delay offset, $p_2$ is the fitted GDD,
+and $p_3$ is the fitted TOD.
+
+\subsection{Spectral-power-weighted least squares}
+
+For spectral samples indexed by $i$, let $S_i$ be the output spectral power
+density, $\phi_i$ the unwrapped output phase, and $\Omega_i$ the physical
+detuning. The fit minimizes
+
+\begin{equation}
+\boxed{
+\chi^2
+=
+\sum_i S_i
+\left[
+\phi_i-\phi_{\mathrm{fit}}(\Omega_i)
+\right]^2.
+}
+\end{equation}
+
+The weights are normalized internally, so only their relative values matter.
+Strong spectral regions therefore dominate over weak wings with poorly
+conditioned phase.
+
+\subsection{Fit range and display axes}
+
+The fit interval can be entered in THz or nm. Changing the displayed unit
+converts the limits so that the same physical spectral interval is preserved.
+The fitted quantity is always computed using $\Omega$ in rad/fs.
+
+The spectral-phase plot automatically chooses its y-limits from the phase data
+that lie inside the currently displayed x-range. When a polynomial fit is
+present, the visible part of the fitted curve is included in the same y-range
+calculation. A small margin is added above and below. This display scaling does
+not alter phase unwrapping, fit limits, weights, or fitted coefficients.
+
+The fitted GDD is a global, spectral-power-weighted quadratic component over the
+selected interval. After strong nonlinear broadening it need not equal the
+local curvature
+
+\begin{equation}
+\left.
+\frac{\dd^2\phi}{\dd\omega^2}
+\right|_{\omega_0}.
+\end{equation}
+
+% ============================================================================
+\section{Tab 4: GDD Compressor Design}
+% ============================================================================
+
+This tab applies a pure quadratic spectral phase to the raw fiber output and
+reconstructs the temporal field.
+
+\subsection{Pure-GDD transfer function}
+
+For applied GDD $G$,
+
+\begin{equation}
+\boxed{
+H_G(\Omega)
+=\exp\left(i\frac{G}{2}\Omega^2\right),
+}
+\end{equation}
+
+and
+
+\begin{equation}
+\widetilde U_G(\Omega)
+=
+\widetilde U_{\mathrm{out}}(\Omega)H_G(\Omega).
+\end{equation}
+
+Since $|H_G|=1$, the spectral power density is unchanged. Only spectral phase
+and the reconstructed temporal field change.
+
+\subsection{Manual GDD}
+
+The user can enter any value of $G$ in fs$^2$ and inspect the compensated pulse,
+the raw fiber output, the transform-limited pulse, the spectrum, and the
+compensated spectral phase.
+
+\subsection{Temporal quality metrics}
+
+Four metrics are available for characterizing or optimizing the compressed
+pulse.
+
+\subsubsection{Main FWHM}
+
+The main FWHM is the temporal distance between the nearest half-maximum
+crossings on either side of the global pulse maximum. It describes the main
+peak but can ignore separated satellites.
+
+\subsubsection{RMS duration}
+
+For temporal power $P(T)$, define the power-weighted centroid
+
+\begin{equation}
+\bar T
+=
+\frac{\int T P(T)\,\dd T}
+{\int P(T)\,\dd T}.
+\end{equation}
+
+The RMS duration is
+
+\begin{equation}
+\boxed{
+\sigma_T
+=
+\sqrt{
+\frac{\int(T-\bar T)^2P(T)\,\dd T}
+{\int P(T)\,\dd T}
+}.
+}
+\end{equation}
+
+This metric is sensitive to the complete temporal profile, including weak
+pedestals and distant satellites.
+
+\subsubsection{95\% energy width}
+
+The 95\% energy width is the shortest contiguous interval $[T_1,T_2]$ that
+contains 95\% of the total temporal energy:
+
+\begin{equation}
+\boxed{
+\Delta T_{95}=T_2-T_1,
+}
+\end{equation}
+
+with
+
+\begin{equation}
+\frac{\int_{T_1}^{T_2}P(T)\,\dd T}
+     {\int_{-\infty}^{+\infty}P(T)\,\dd T}
+\ge0.95,
+\end{equation}
+
+and $T_2-T_1$ chosen as small as possible.
+
+\subsubsection{95\%-bounded FWHM}
+
+This is the default optimization metric. First, the shortest interval
+containing 95\% of the pulse energy is found. Starting from each boundary of
+that interval and moving toward the global peak, the first crossing of
+$P_{\max}/2$ is located. The distance between those two crossings is the
+95\%-bounded FWHM.
+
+The metric remains sensitive to sufficiently strong pre-pulses and post-pulses
+inside the 95\%-energy interval while retaining an FWHM-like interpretation.
+
+\subsection{Optimized GDD}
+
+The GDD objective can contain several local minima. FibDisp therefore combines:
+
+\begin{enumerate}
+    \item a spectral-phase estimate used to form the seed
+    $G\simeq-p_2$;
+    \item a broad global GDD scan;
+    \item identification of promising minima;
+    \item progressively finer local grids around several candidate basins;
+    \item retention of the best objective value encountered;
+    \item a small final local refinement when useful.
+\end{enumerate}
+
+The optimized GDD is the value that minimizes the selected temporal quality
+metric. It is an operational compressor setting and is not required to equal
+the negative of the fitted GDD when higher-order or structured spectral phase
+is important.
+
+% ============================================================================
+\section{Tab 5: Parameter Sweep}
+% ============================================================================
+
+The Parameter Sweep tab uses the current Settings values, propagation-term
+switches, self-steepening solver, and Phase Analysis configuration as the
+baseline for a family of calculations.
+
+\subsection{Sweep parameters}
+
+The selectable sweep parameter is one of:
+
+\begin{itemize}
+    \item pressure $p$;
+    \item fiber length $L$;
+    \item capillary radius $R$;
+    \item pulse energy $E_{\mathrm p}$;
+    \item transform-limited input FWHM $\tau_{\FWHM}$;
+    \item carrier wavelength $\lambda_0$;
+    \item input GDD;
+    \item input TOD;
+    \item direct $\beta_2$;
+    \item direct $\beta_3$;
+    \item direct $\alpha$;
+    \item direct $\gamma$;
+    \item compensating output GDD.
+\end{itemize}
+
+When $\beta_2$, $\beta_3$, $\alpha$, or $\gamma$ is selected as the sweep
+parameter, only that coefficient is replaced at each sweep point. All other
+baseline physical parameters and direct coefficients remain fixed.
+
+For a built-in gas:
+
+\begin{itemize}
+    \item a $\beta_2$, $\beta_3$, or $\gamma$ override leaves the calculated
+    frequency-dependent capillary loss $\alpha(\nu)$ unchanged;
+    \item an $\alpha$ override replaces the calculated loss with the selected
+    constant attenuation value over the whole spectrum.
+\end{itemize}
+
+\subsection{Sweep values and spacing}
+
+A sweep is defined by a minimum $x_{\min}$, maximum $x_{\max}$, and number of
+values $N_{\mathrm{sweep}}$. Both endpoints are included.
+
+Let
+
+\begin{equation}
+u_j=\frac{j}{N_{\mathrm{sweep}}-1},
+\qquad
+j=0,1,\ldots,N_{\mathrm{sweep}}-1.
+\end{equation}
+
+For linear spacing,
+
+\begin{equation}
+x(u)=x_{\min}+(x_{\max}-x_{\min})u.
+\end{equation}
+
+For exponential spacing with base $b>0$, $b\ne1$,
+
+\begin{equation}
+\boxed{
+s_{\exp}(u)=\frac{b^u-1}{b-1},
+}
+\end{equation}
+
+and
+
+\begin{equation}
+x(u)=x_{\min}+(x_{\max}-x_{\min})s_{\exp}(u).
+\end{equation}
+
+For logarithmic spacing,
+
+\begin{equation}
+\boxed{
+s_{\log}(u)
+=
+\frac{\ln[1+(b-1)u]}{\ln b},
+}
+\end{equation}
+
+with the same mapping to $[x_{\min},x_{\max}]$. Both normalized mappings
+approach linear spacing as $b\rightarrow1$ and can be used for signed parameter
+ranges because the logarithm or exponential acts on the normalized coordinate
+$u$, not directly on the physical parameter.
+
+The Preview field shows the exact list of values before the sweep starts.
+
+\subsection{Compressor criterion}
+
+The sweep optimizer has its own compressor-criterion selector. The available
+metrics are:
+
+\begin{itemize}
+    \item 95\%-bounded FWHM;
+    \item RMS duration;
+    \item 95\% energy width;
+    \item Main FWHM.
+\end{itemize}
+
+The selected criterion is used to determine the optimized GDD and optimized
+compressed duration at each relevant sweep point.
+
+\subsection{Quantities calculated at each point}
+
+The sweep result contains, where applicable:
+
+\begin{itemize}
+    \item phase-fit GDD;
+    \item optimized GDD;
+    \item actual raw output FWHM;
+    \item transform-limited output duration;
+    \item optimized compressed duration;
+    \item boundary-warning information;
+    \item raw temporal and spectral output fields needed for post-fiber
+    compression views.
+\end{itemize}
+
+The sweep table reports the optimized compressed duration as a stable numerical
+reference. The selectable compressed plots described below may instead display
+a fixed or swept GDD without changing the stored raw fiber outputs.
+
+\subsection{Phase-fit range used during a sweep}
+
+If the Phase Analysis tab contains a valid fit range, the sweep uses that
+physical range. If no valid range is available, an automatic significant
+spectral interval is selected independently for each sweep point. The phase fit
+remains spectral-power weighted.
+
+\subsection{Plot choices}
+
+The Plot selector provides:
+
+\begin{itemize}
+    \item Phase-fit GDD;
+    \item Optimized GDD;
+    \item Actual output FWHM;
+    \item TL duration;
+    \item Compressed duration;
+    \item Spectral power map;
+    \item Pulse power map (uncompressed);
+    \item Pulse power map (compressed).
+\end{itemize}
+
+The spectral map displays $S(\nu,x)$ and the temporal maps display $P(T,x)$,
+where $x$ denotes the selected sweep parameter. If different sweep points use
+different physical frequency or time grids, the maps are interpolated onto a
+common grid for visualization. The original per-point grids and arrays are
+retained separately in the numerical result.
+
+\subsection{Compression mode for compressed plots}
+
+The \textbf{Compressed plots} selector controls both \textbf{Compressed
+duration} and \textbf{Pulse power map (compressed)}.
+
+For every sweep other than a compensating-GDD sweep, the available modes are:
+
+\begin{itemize}
+    \item \textbf{Optimized GDD}: use the independently optimized GDD for each
+    sweep point;
+    \item \textbf{Fixed GDD}: apply the same user-entered GDD to every sweep
+    point.
+\end{itemize}
+
+If the sweep parameter itself is \textbf{Compensating GDD}, a third mode is
+available:
+
+\begin{itemize}
+    \item \textbf{Swept GDD}: apply the GDD value represented by each point on
+    the sweep axis.
+\end{itemize}
+
+Thus a compensating-GDD sweep offers Swept GDD, Optimized GDD, and Fixed GDD;
+all other sweeps offer Optimized GDD and Fixed GDD. Changing this selector is a
+post-processing operation on the stored complex output spectrum and does not
+rerun the fiber propagation.
+
+\subsection{Special propagation strategies}
+
+For a fiber-length sweep, the field is propagated once to the largest requested
+length. Whenever a requested intermediate length is reached, the complex field
+is analyzed at that physical position. If necessary, the active SSFM interval
+is shortened so the requested length is reached exactly.
+
+For a compensating-GDD sweep, the fiber parameters do not change. The fiber is
+therefore propagated once, the optimized GDD is determined once for that raw
+output, and every swept GDD is then applied to the same complex spectrum.
+
+\subsection{Viewing sweep settings}
+
+Two read-only windows help identify the full parameter context of a sweep:
+
+\begin{description}
+    \item[View current settings] shows the live GUI values that would be used
+    if a sweep were started at that moment.
+    \item[View last run sweep settings] shows a frozen snapshot of the settings
+    used by the most recently completed sweep. Editing the Settings tab later
+    does not modify this snapshot.
+\end{description}
+
+The snapshot includes gas/fiber parameters, pulse parameters, direct
+coefficients, propagation-term switches, self-steepening solver, numerical
+grid, sweep definition, phase-fit configuration, and compressor settings.
+
+\subsection{Saving sweep data}
+
+Sweep results can be exported as NPZ or CSV. The data include the sweep values,
+phase-fit and optimized GDD, durations, boundary warnings, common interpolated
+maps, native per-point spectral and temporal axes, raw pulse-power arrays,
+complex output spectra for compressor reconstruction, and baseline settings
+associated with the sweep.
+
+% ============================================================================
+\section{Interpreting Fitted and Optimized GDD}
+% ============================================================================
+
+After nonlinear propagation, the output spectral phase can contain quadratic,
+cubic, higher-order, and oscillatory contributions:
+
+\begin{equation}
+\phi(\Omega)
+=
+\phi_0+\phi_1\Omega
++\frac{\phi_2}{2}\Omega^2
++\frac{\phi_3}{6}\Omega^3
++\phi_{\mathrm{HO}}(\Omega),
+\end{equation}
+
+where $\phi_{\mathrm{HO}}$ denotes contributions beyond the displayed low-order
+terms.
+
+Three different quadratic-phase concepts should be distinguished:
+
+\begin{enumerate}
+    \item the local spectral-phase curvature
+    \[
+    \left.\frac{\dd^2\phi}{\dd\omega^2}\right|_{\omega_0};
+    \]
+    \item the global spectral-power-weighted fitted GDD $p_2$ over a chosen
+    spectral interval;
+    \item the optimized compressor GDD $G_{\mathrm{opt}}$, defined as the value
+    that minimizes a selected temporal quality metric.
+\end{enumerate}
+
+For a nearly quadratic phase,
+
+\begin{equation}
+G_{\mathrm{opt}}\simeq-p_2.
+\end{equation}
+
+After strong broadening, the two can differ because a pure quadratic phase
+cannot remove TOD, higher-order spectral phase, or rapid phase structure.
+
+% ============================================================================
+\section{Installation and Running from Python}
+% ============================================================================
+
+FibDisp consists of two Python source files that must be kept in the same
+directory:
+
+\begin{description}
+    \item[\texttt{fibdisp\_core.py}] propagation physics, pulse generation,
+    phase analysis, compressor calculations, and parameter sweeps;
+    \item[\texttt{fibdisp\_gui.py}] Tkinter graphical interface, plotting,
+    controls, warnings, and data export.
+\end{description}
+
+The principal Python dependencies are NumPy, SciPy, Matplotlib, and Tkinter.
+PyInstaller is needed only when creating a standalone executable.
+
+A standalone executable is \emph{not} required to use FibDisp. Running the
+Python source directly is often the simplest choice for development and
+scientific work.
+
+\subsection{Windows: Python virtual environment}
+
+Install a recent 64-bit Python distribution with Tk support. Python 3.12 is a
+suitable choice. Open PowerShell in the directory containing
+\texttt{fibdisp\_gui.py} and \texttt{fibdisp\_core.py}.
+
+Create a local virtual environment:
+
+\begin{lstlisting}
+python -m venv .venv
+\end{lstlisting}
+
+If PowerShell prevents activation of local scripts, allow scripts only for the
+current PowerShell process:
+
+\begin{lstlisting}
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+\end{lstlisting}
+
+Activate the environment:
+
+\begin{lstlisting}
+.\.venv\Scripts\Activate.ps1
+\end{lstlisting}
+
+Install the numerical packages:
+
+\begin{lstlisting}
+python -m pip install --upgrade pip
+python -m pip install numpy scipy matplotlib
+\end{lstlisting}
+
+Run FibDisp directly:
+
+\begin{lstlisting}
+python fibdisp_gui.py
+\end{lstlisting}
+
+The packages are installed inside the local \texttt{.venv} directory. They do
+not need to be installed system-wide.
+
+\subsection{Linux: Python virtual environment}
+
+On Debian or Ubuntu, install Python, the virtual-environment module, and Tk if
+needed:
+
+\begin{lstlisting}
+sudo apt update
+sudo apt install python3 python3-venv python3-tk
+\end{lstlisting}
+
+Create and activate the environment:
+
+\begin{lstlisting}
+python3 -m venv .venv
+source .venv/bin/activate
+\end{lstlisting}
+
+Install dependencies and run:
+
+\begin{lstlisting}
+python -m pip install --upgrade pip
+python -m pip install numpy scipy matplotlib
+python fibdisp_gui.py
+\end{lstlisting}
+
+For another Linux distribution, install the equivalent Python and Tk packages
+with the system package manager.
+
+\subsection{macOS: Python virtual environment}
+
+Use a Python installation with Tk support, then open Terminal in the FibDisp
+source directory:
+
+\begin{lstlisting}
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install numpy scipy matplotlib
+python fibdisp_gui.py
+\end{lstlisting}
+
+If several Python installations are present, verify the selected interpreter
+with
+
+\begin{lstlisting}
+python3 --version
+\end{lstlisting}
+
+before creating the environment.
+
+\subsection{Anaconda or Miniconda}
+
+FibDisp can also be run without compiling inside an isolated Conda environment.
+From Anaconda Prompt, PowerShell, or a terminal with Conda initialized:
+
+\begin{lstlisting}
+conda create -n fibdisp python=3.12 numpy scipy matplotlib tk
+conda activate fibdisp
+python fibdisp_gui.py
+\end{lstlisting}
+
+To use an already existing Conda environment, activate it and install any
+missing dependencies:
+
+\begin{lstlisting}
+conda activate my_environment
+conda install numpy scipy matplotlib tk
+python fibdisp_gui.py
+\end{lstlisting}
+
+The source directory only needs to contain \texttt{fibdisp\_gui.py} and
+\texttt{fibdisp\_core.py}; Python imports the core module from the same folder.
+
+% ============================================================================
+\section{Building Standalone Executables}
+% ============================================================================
+
+A standalone application bundles the Python interpreter and the required Python
+packages. End users can then run FibDisp without installing Python separately.
+The recommended PyInstaller format is \texttt{--onedir}, which creates one
+application directory containing the executable and its runtime libraries.
+
+Native executables should be built on the target operating system: build the
+Windows application on Windows, the Linux application on Linux, and the macOS
+application on macOS.
+
+\subsection{Install build dependencies}
+
+Inside a virtual environment or Conda environment containing FibDisp, install
+PyInstaller:
+
+\begin{lstlisting}
+python -m pip install pyinstaller
+\end{lstlisting}
+
+If NumPy, SciPy, and Matplotlib are not already installed, install them as well:
+
+\begin{lstlisting}
+python -m pip install numpy scipy matplotlib
+\end{lstlisting}
+
+\subsection{Generic PyInstaller command}
+
+Run this command from the directory containing the two FibDisp source files:
+
+\begin{lstlisting}
+python -m PyInstaller --noconfirm --clean --windowed --onedir --name FibDisp fibdisp_gui.py
+\end{lstlisting}
+
+The \texttt{--windowed} option suppresses a separate terminal window for the
+GUI application. The \texttt{--onedir} option keeps all bundled runtime files
+inside one application directory.
+
+\subsection{Windows output}
+
+The Windows application is normally created at
+
+\begin{lstlisting}
+dist\FibDisp\FibDisp.exe
+\end{lstlisting}
+
+Distribute the complete \texttt{dist\textbackslash FibDisp} directory, not only
+\texttt{FibDisp.exe}, because the executable uses the bundled libraries stored
+beside it.
+
+If a supplied PowerShell build script is used, run it from its own directory:
+
+\begin{lstlisting}
+powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
+\end{lstlisting}
+
+A local Python virtual environment created for building can be deleted after a
+successful build if no further builds are required.
+
+\subsection{Linux output}
+
+The Linux executable is normally created at
+
+\begin{lstlisting}
+dist/FibDisp/FibDisp
+\end{lstlisting}
+
+Distribute the complete \texttt{dist/FibDisp} directory. For broad Linux
+compatibility, build on a distribution at least as old as the oldest
+distribution that must run the application, because the resulting binary is
+linked to the build system's C runtime.
+
+\subsection{macOS output}
+
+A windowed macOS build normally produces
+
+\begin{lstlisting}
+dist/FibDisp.app
+\end{lstlisting}
+
+Apple Silicon and Intel binaries should be built and tested for their intended
+architectures. An unsigned local application can trigger Gatekeeper. Public
+macOS distribution should use appropriate code signing and notarization.
+
+\subsection{Build directories}
+
+PyInstaller commonly creates:
+
+\begin{description}
+    \item[\texttt{.venv}] optional local Python environment used for building;
+    \item[\texttt{build}] temporary PyInstaller build files;
+    \item[\texttt{dist}] final distributable application;
+    \item[\texttt{FibDisp.spec}] PyInstaller build specification.
+\end{description}
+
+The \texttt{build} directory can be removed after a successful build. The
+\texttt{.venv} directory can also be removed if it is not needed for later
+rebuilding. The \texttt{dist} output is the application to keep or distribute.
+
+% ============================================================================
+\section{Recommended Simulation Workflow}
+% ============================================================================
+
+A practical sequence is:
+
+\begin{enumerate}
+    \item choose gas, pressure, fiber radius, fiber length, pulse shape, pulse
+    energy, transform-limited FWHM, carrier wavelength, and input phase in
+    \textbf{Settings};
+    \item inspect the displayed $\beta_2$, $\beta_3$, $\alpha$, and $\gamma$;
+    \item use \textbf{Confirm (preview input)} to verify the input field and
+    numerical window;
+    \item select the propagation terms and self-steepening solver in
+    \textbf{Start \& Results};
+    \item select the number of stored $z$ samples needed for propagation maps;
+    \item run the propagation and check boundary warnings;
+    \item inspect raw pulse power, spectrum, chirp, group delay, transform
+    limit, and the temporal or spectral evolution map;
+    \item use the fixed-GDD Result display when a quick post-fiber compensation
+    view is useful;
+    \item use \textbf{Phase Analysis} to quantify the weighted spectral phase;
+    \item use \textbf{GDD Compressor Design} to compare phase-fit GDD with the
+    optimized pure-GDD compressor;
+    \item choose a temporal optimization metric appropriate to the pulse
+    structure, especially when satellites are present;
+    \item use \textbf{Parameter Sweep} to study trends and maps while keeping
+    track of the full baseline through the settings-view buttons;
+    \item repeat selected calculations with finer numerical grids to verify
+    convergence before treating small differences as physical.
+\end{enumerate}
+
+% ============================================================================
+\section{Numerical Convergence Checks}
+% ============================================================================
+
+A numerical result should be checked for convergence with respect to the
+propagation and FFT grids.
+
+\subsection{Propagation-step convergence}
+
+Increase $N_Z$, thereby reducing $\Delta z$, and compare important observables
+such as:
+
+\begin{itemize}
+    \item output spectrum and temporal profile;
+    \item broadening factor;
+    \item transform-limited FWHM;
+    \item phase-fit GDD;
+    \item optimized GDD;
+    \item optimized compressed duration.
+\end{itemize}
+
+Strong self-steepening can require substantially finer $z$ resolution in the
+fast exponential mode. The accurate RK4 mode reduces this sensitivity by
+subdividing the nonlinear step internally, but convergence of the complete
+split-step solution should still be checked.
+
+\subsection{FFT-resolution convergence}
+
+Increase $n$ so that $N=2^n$ increases. Verify that spectral and temporal fine
+structure, fitted phase, and compressor results do not change significantly.
+Frequency-boundary warnings are a direct indication that the available
+bandwidth is insufficient.
+
+\subsection{Temporal-window convergence}
+
+Increase $m$ when the pulse, temporal satellites, or dispersive tails approach
+the periodic time boundaries. Since increasing $m$ at fixed $N$ increases
+$\Delta T$, increase $n$ as well when the temporal resolution must be preserved.
+
+\subsection{Self-steepening convergence}
+
+For calculations dominated by optical-shock dynamics:
+
+\begin{itemize}
+    \item compare Fast and Accurate RK4 solvers when practical;
+    \item increase $N_Z$;
+    \item increase FFT resolution;
+    \item verify that the spectrum remains well separated from the FFT edges;
+    \item verify that the sharpest temporal feature is sampled by several time
+    points rather than one or two grid samples.
+\end{itemize}
+
+% ============================================================================
+\section{Model Limitations}
+% ============================================================================
+
+The implemented propagation model includes Kerr nonlinearity, self-steepening,
+loss, and dispersion through $\beta_3$. It does not explicitly include:
+
+\begin{itemize}
+    \item photoionization and plasma generation;
+    \item ionization loss;
+    \item a time-resolved molecular Raman response;
+    \item dispersion coefficients beyond $\beta_3$ in the propagation Taylor
+    expansion;
+    \item propagation with the complete frequency-dependent modal
+    $\beta(\omega)$;
+    \item multimode transverse dynamics;
+    \item longitudinally varying capillary radius or pressure profiles;
+    \item real-compressor amplitude response or higher-order compressor phase
+    beyond the applied pure quadratic phase.
+\end{itemize}
+
+The large-core capillary approximation is used to calculate the modal effective
+index for the built-in gas coefficients. Far from the carrier, particularly
+when a spectrum spans a very large fraction of an octave, a local
+$\beta_2+\beta_3$ Taylor expansion can become less accurate than propagation
+based on the full modal dispersion relation.
+
+For regimes where ionization, plasma dynamics, Raman response, multimode
+propagation, or higher-order dispersion are important, the result should be
+interpreted as the prediction of the model defined by Eq.~\eqref{eq:gnlse}, not
+as a complete description of every experimental process.
+
+% ============================================================================
+\section{Summary of Sign and Phase Conventions}
+% ============================================================================
+
+The principal conventions are:
+
+\begin{itemize}
+    \item the centred FFT coordinate is $f_{\FFT}$;
+    \item physical optical frequency is
+    \[
+    \nu=\nu_0-f_{\FFT};
+    \]
+    \item physical detuning is
+    \[
+    \Omega=-2\pi f_{\FFT};
+    \]
+    \item input or compressor quadratic phase is written
+    \[
+    \phi_{\GDD}(\Omega)=\frac{\GDD}{2}\Omega^2;
+    \]
+    \item cubic phase is written
+    \[
+    \phi_{\TOD}(\Omega)=\frac{\TOD}{6}\Omega^3;
+    \]
+    \item temporal instantaneous-frequency shift is
+    \[
+    \Delta\nu(T)
+    =-\frac{1}{2\pi}\frac{\dd\phi_T}{\dd T};
+    \]
+    \item spectral group delay is
+    \[
+    GD=\frac{\dd\phi}{\dd\omega};
+    \]
+    \item a predominantly positive output quadratic spectral phase is
+    compensated by a negative applied GDD, and vice versa.
+\end{itemize}
+
+% ============================================================================
+\section{References}
+% ============================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{nisoli1996}
+M. Nisoli, S. De Silvestri, and O. Svelto,
+``Generation of high energy 10 fs pulses by a new pulse compression
+technique,''
+\textit{Applied Physics Letters} \textbf{68}, 2793--2795 (1996).
+DOI: 10.1063/1.116609.
+
+\bibitem{nisoli1997}
+M. Nisoli, S. De Silvestri, O. Svelto, R. Szip\"ocs, K. Ferencz,
+C. Spielmann, S. Sartania, and F. Krausz,
+``Compression of high-energy laser pulses below 5 fs,''
+\textit{Optics Letters} \textbf{22}, 522--524 (1997).
+
+\bibitem{vozzi2005}
+C. Vozzi, M. Nisoli, G. Sansone, S. Stagira, and S. De Silvestri,
+``Optimal spectral broadening in hollow-fiber compressor systems,''
+\textit{Applied Physics B} \textbf{80}, 285--289 (2005).
+DOI: 10.1007/s00340-004-1721-1.
+
+\bibitem{schenkel2003}
+B. Schenkel, J. Biegert, U. Keller, C. Vozzi, M. Nisoli, G. Sansone,
+S. Stagira, S. De Silvestri, and O. Svelto,
+``Generation of 3.8-fs pulses from adaptive compression of a cascaded
+hollow fiber supercontinuum,''
+\textit{Optics Letters} \textbf{28}, 1987--1989 (2003).
+DOI: 10.1364/OL.28.001987.
+
+\end{thebibliography}
+
+\end{document}
