@@ -1,61 +1,44 @@
 cff-version: 1.2.0
-
-message: "If you use FibDisp in scientific work, please cite both the FibDisp software and the original scientific publication listed in the references."
-
-title: "FibDisp"
-
+message: “If you use FibDisp in scientific work, please cite both FibDisp and the original scientific publication listed below.”
+title: “FibDisp”
 type: software
 
 authors:
 
-* family-names: "Vozzi"
-  given-names: "Caterina"
+* family-names: “Faccialà”
+    given-names: “Davide”
+* family-names: “Vozzi”
+    given-names: “Caterina”
+* family-names: “Nisoli”
+    given-names: “Mauro”
+* family-names: “Sansone”
+    given-names: “Giuseppe”
+* family-names: “Stagira”
+    given-names: “Salvatore”
 
-* family-names: "Nisoli"
-  given-names: "Mauro"
 
-* family-names: "Sansone"
-  given-names: "Giuseppe"
-
-* family-names: "Stagira"
-  given-names: "Salvatore"
-
-* family-names: "De Silvestri"
-  given-names: "Sandro"
-
-* family-names: "Faccialà"
-  given-names: "Davide"
-
-url: "https://github.com/omegatype/fibdisp-web"
-
-license: "CC-BY-4.0"
+repository-code: “https://github.com/omegatype/fibdisp-web”
+license: “CC-BY-4.0”
 
 references:
 
 * type: article
-  title: "Optimal spectral broadening in hollow-fiber compressor systems"
-
-  authors:
-
-  * family-names: "Vozzi"
-    given-names: "Caterina"
-
-  * family-names: "Nisoli"
-    given-names: "Mauro"
-
-  * family-names: "Sansone"
-    given-names: "Giuseppe"
-
-  * family-names: "Stagira"
-    given-names: "Salvatore"
-
-  * family-names: "De Silvestri"
-    given-names: "Sandro"
-
-  journal: "Applied Physics B"
-  volume: "80"
-  start: "285"
-  end: "289"
-  year: 2005
-  doi: "10.1007/s00340-004-1721-1"
-
+    title: “Optimal spectral broadening in hollow-fiber compressor systems”
+    authors:
+    * family-names: “Vozzi”
+        given-names: “Caterina”
+    * family-names: “Nisoli”
+        given-names: “Mauro”
+    * family-names: “Sansone”
+        given-names: “Giuseppe”
+    * family-names: “Stagira”
+        given-names: “Salvatore”
+    * family-names: “De Silvestri”
+        given-names: “Sandro”
+        journal: “Applied Physics B”
+        volume: 80
+        start: 285
+        end: 289
+        year: 2005
+        doi: “10.1007/s00340-004-1721-1”
+        scope: “Please cite this publication in addition to FibDisp when using the software in scientific work.”
