@@ -6,7 +6,21 @@ fibers. The module provides gas and waveguide coefficients, pulse generation,
 symmetric split-step propagation, nonlinear self-steepening solvers, spectral
 phase analysis, GDD compensation, and parameter-sweep utilities.
 
-Author: Davide Faccialà
+Current FibDisp development: Davide Faccialà
+
+Scientific origin and citation
+------------------------------
+The original numerical implementation underlying FibDisp was developed by
+Caterina Vozzi, Mauro Nisoli, Giuseppe Sansone, Salvatore Stagira, and
+Sandro De Silvestri in connection with:
+
+C. Vozzi, M. Nisoli, G. Sansone, S. Stagira, and S. De Silvestri,
+"Optimal spectral broadening in hollow-fiber compressor systems,"
+Applied Physics B 80, 285-289 (2005).
+https://doi.org/10.1007/s00340-004-1721-1
+
+If FibDisp is used in scientific work, please cite both FibDisp (see
+CITATION.cff) and the publication above. See NOTICE.md for attribution details.
 """
 
 import numpy as np
